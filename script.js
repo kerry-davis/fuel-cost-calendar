@@ -413,7 +413,7 @@ async function renderCalendar() {
             }
 
             if (currentYear === new Date().getFullYear() && currentMonth === new Date().getMonth() && day === new Date().getDate()) {
-                dayElement.classList.add('ring-2', 'ring-blue-500');
+                dayElement.classList.add('ring-2', 'ring-calendar-green');
             }
 
             dayElement.addEventListener('click', () => showModal(day, currentMonth, currentYear));
@@ -589,7 +589,7 @@ async function displayFuelLogsForDay(year, month, day) {
                                     <span class="font-bold text-base">${log.fuelType}</span>
                                     <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(${vehicleName})</span>
                                  </div>
-                                 <button data-action="edit-log" data-log-id="${log.id}" class="text-xs px-2 py-1 bg-yellow-500 text-white rounded">Edit</button>
+                                 <button data-action="edit-log" data-log-id="${log.id}" class="text-xs px-2 py-1 bg-accent text-white rounded">Edit</button>
                                </div>`;
                 content += `<p class="mt-2"><strong>Total Cost:</strong> $${log.totalCost.toFixed(2)}</p>`;
                 if (log.amount > 0) content += `<p><strong>Amount:</strong> ${log.amount} L</p>`;
@@ -910,8 +910,8 @@ function displayAnalyticsCharts(logs, metrics) {
         datasets: [{
             label: 'Total Cost ($)',
             data: logs.map(l => l.totalCost),
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+            borderColor: '#62D995',
+            backgroundColor: 'rgba(98, 217, 149, 0.2)',
             fill: true,
             tension: 0.1
         }]
@@ -925,8 +925,8 @@ function displayAnalyticsCharts(logs, metrics) {
         datasets: [{
             label: 'Efficiency (L/100km)',
             data: metrics.efficiencyReadings,
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+            borderColor: '#80C7F2',
+            backgroundColor: 'rgba(128, 199, 242, 0.2)',
             fill: true,
             tension: 0.1
         }]
