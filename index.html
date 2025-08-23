@@ -136,10 +136,11 @@
                         <i class="fas fa-times text-xl"></i>
                     </button>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <!-- Vehicle Selection -->
-                    <div class="md:col-span-2">
-                        <label for="fuel-log-vehicle" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vehicle</label>
+                <form id="fuel-log-form">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <!-- Vehicle Selection -->
+                        <div class="md:col-span-2">
+                            <label for="fuel-log-vehicle" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vehicle</label>
                         <select id="fuel-log-vehicle" class="p-2 w-full border rounded dark:bg-gray-600 dark:border-gray-500" required></select>
                     </div>
                     <!-- Fuel Type -->
@@ -157,7 +158,8 @@
                     <input type="number" id="fuel-log-odometer" placeholder="Odometer (e.g., 123456 km)" class="p-2 border rounded dark:bg-gray-600 dark:border-gray-500">
                     <!-- Notes -->
                     <textarea id="fuel-log-notes" placeholder="Optional notes (e.g., station, conditions)" rows="3" class="md:col-span-2 p-2 border rounded dark:bg-gray-600 dark:border-gray-500"></textarea>
-                </div>
+                    </div>
+                </form>
                 <div class="flex space-x-2 mt-4">
                     <button id="save-fuel-log-btn" class="flex-1 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition">Save Log</button>
                     <button id="delete-fuel-log-btn" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition hidden">Delete Log</button>

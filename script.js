@@ -454,7 +454,7 @@ async function openFuelLogModal(logId = null) {
     const vehicleSelect = document.getElementById('fuel-log-vehicle');
 
     // Reset form
-    vehicleForm.reset(); // Assuming vehicleForm is a global or accessible form element
+    document.getElementById('fuel-log-form').reset();
     currentLogId = logId;
 
     // Populate vehicles dropdown
