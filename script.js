@@ -53,17 +53,34 @@ function setupTheme() {
 
 
 function initDB(callback) {
-    const request = indexedDB.open("fuelLogDB", 1);
+    const request = indexedDB.open("fuelLogDB", 2);
 
     request.onupgradeneeded = function(event) {
         const db = event.target.result;
-        console.log("Initializing database schema...");
+        console.log("Upgrading database schema...");
 
-        // Create the new object store for fuel logs
+        // Create the new object store for fuel logs if it doesn't exist
         if (!db.objectStoreNames.contains('fuel_logs')) {
             const fuelLogsStore = db.createObjectStore("fuel_logs", { keyPath: "id", autoIncrement: true });
             fuelLogsStore.createIndex("date", "date", { unique: false });
             console.log("'fuel_logs' object store created.");
+        }
+
+        // Create the new object store for vehicles
+        if (!db.objectStoreNames.contains('vehicles')) {
+            const vehiclesStore = db.createObjectStore("vehicles", { keyPath: "id", autoIncrement: true });
+            vehiclesStore.createIndex("name", "name", { unique: false });
+            console.log("'vehicles' object store created.");
+        }
+
+        // Add the vehicleId index to the fuel_logs store
+        const transaction = event.target.transaction;
+        if (transaction) {
+            const fuelLogsStore = transaction.objectStore("fuel_logs");
+            if (!fuelLogsStore.indexNames.contains('vehicleId')) {
+                fuelLogsStore.createIndex("vehicleId", "vehicleId", { unique: false });
+                console.log("Created 'vehicleId' index on 'fuel_logs' store.");
+            }
         }
     };
 
@@ -430,25 +447,28 @@ async function renderCalendar() {
 
 
 
-function openFuelLogModal(logId = null) {
+async function openFuelLogModal(logId = null) {
     const fuelLogModal = document.getElementById('fuelLogModal');
     const formTitle = document.getElementById('fuel-log-form-title');
     const deleteBtn = document.getElementById('delete-fuel-log-btn');
+    const vehicleSelect = document.getElementById('fuel-log-vehicle');
 
-    // Clear form first
-    document.getElementById('fuel-log-type').value = '';
-    document.getElementById('fuel-log-price').value = '';
-    document.getElementById('fuel-log-cost').value = '';
-    document.getElementById('fuel-log-amount').value = '';
-    document.getElementById('fuel-log-odometer').value = '';
-    document.getElementById('fuel-log-notes').value = '';
+    // Reset form
+    vehicleForm.reset(); // Assuming vehicleForm is a global or accessible form element
+    currentLogId = logId;
+
+    // Populate vehicles dropdown
+    const vehicles = await getAllData('vehicles');
+    if (vehicles.length === 0) {
+        alert("Please add a vehicle first in the 'My Vehicles' section.");
+        return;
+    }
+    vehicleSelect.innerHTML = vehicles.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
 
     // Populate fuel types dropdown
     const fuelTypeSelect = document.getElementById('fuel-log-type');
-    const fuelTypes = JSON.parse(localStorage.getItem('fuelTypes') || '["Petrol (91)", "Petrol (95)", "Diesel"]'); // Default values
+    const fuelTypes = JSON.parse(localStorage.getItem('fuelTypes') || '["Petrol (91)", "Petrol (95)", "Diesel"]');
     fuelTypeSelect.innerHTML = fuelTypes.map(type => `<option value="${type}">${type}</option>`).join('');
-
-    currentLogId = logId;
 
     if (logId) {
         formTitle.textContent = 'Edit Fill-up';
@@ -460,7 +480,8 @@ function openFuelLogModal(logId = null) {
         request.onsuccess = () => {
             const data = request.result;
             if (data) {
-                document.getElementById('fuel-log-type').value = data.fuelType;
+                vehicleSelect.value = data.vehicleId;
+                fuelTypeSelect.value = data.fuelType;
                 document.getElementById('fuel-log-price').value = data.price;
                 document.getElementById('fuel-log-cost').value = data.totalCost;
                 document.getElementById('fuel-log-amount').value = data.amount;
@@ -476,8 +497,15 @@ function openFuelLogModal(logId = null) {
 }
 
 function saveFuelLog() {
+    const vehicleId = parseInt(document.getElementById('fuel-log-vehicle').value, 10);
+    if (!vehicleId) {
+        alert("Please select a vehicle.");
+        return;
+    }
+
     const fuelLogData = {
         date: `${modalCurrentYear}-${(modalCurrentMonth + 1).toString().padStart(2, '0')}-${modalCurrentDay.toString().padStart(2, '0')}`,
+        vehicleId: vehicleId,
         fuelType: document.getElementById('fuel-log-type').value,
         price: parseFloat(document.getElementById('fuel-log-price').value) || 0,
         totalCost: parseFloat(document.getElementById('fuel-log-cost').value) || 0,
@@ -535,8 +563,12 @@ function deleteFuelLog(logId) {
     };
 }
 
-function displayFuelLogsForDay(year, month, day) {
+async function displayFuelLogsForDay(year, month, day) {
     const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+
+    const vehicles = await getAllData('vehicles');
+    const vehicleMap = new Map(vehicles.map(v => [v.id, v.name]));
+
     const transaction = db.transaction(['fuel_logs'], 'readonly');
     const store = transaction.objectStore('fuel_logs');
     const index = store.index('date');
@@ -551,8 +583,12 @@ function displayFuelLogsForDay(year, month, day) {
             logs.forEach(log => {
                 const logEl = document.createElement('div');
                 logEl.className = 'p-3 bg-gray-100 dark:bg-gray-700 rounded-lg shadow-sm text-sm';
+                const vehicleName = vehicleMap.get(log.vehicleId) || 'Unknown Vehicle';
                 let content = `<div class="flex justify-between items-center">
-                                 <span class="font-bold text-base">${log.fuelType}</span>
+                                 <div>
+                                    <span class="font-bold text-base">${log.fuelType}</span>
+                                    <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(${vehicleName})</span>
+                                 </div>
                                  <button data-action="edit-log" data-log-id="${log.id}" class="text-xs px-2 py-1 bg-yellow-500 text-white rounded">Edit</button>
                                </div>`;
                 content += `<p class="mt-2"><strong>Total Cost:</strong> $${log.totalCost.toFixed(2)}</p>`;
@@ -737,27 +773,53 @@ function destroyActiveCharts() {
 }
 
 async function loadAnalytics() {
-    const logs = await getAllData('fuel_logs');
-    if (logs.length < 2) {
-        alert("Not enough data to generate analytics. Please add at least two fill-up logs with odometer readings.");
+    const allLogs = await getAllData('fuel_logs');
+    const allVehicles = await getAllData('vehicles');
+
+    if (allLogs.length < 1) {
+        alert("No logs available to generate analytics.");
         return;
     }
 
-    // Sort logs by date and then odometer to ensure correct order for calculations
-    logs.sort((a, b) => {
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        if (dateA - dateB !== 0) {
-            return dateA - dateB;
-        }
-        return a.odometer - b.odometer;
+    // Populate vehicle filter dropdown
+    const vehicleFilterSelect = document.getElementById('analytics-vehicle-filter');
+    vehicleFilterSelect.innerHTML = '<option value="all">All Vehicles</option>';
+    allVehicles.forEach(v => {
+        vehicleFilterSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
     });
 
-    const analyticsData = calculateAnalytics(logs);
+    const updateAnalyticsView = (selectedVehicleId) => {
+        let logsToShow = allLogs;
+        if (selectedVehicleId !== 'all') {
+            logsToShow = allLogs.filter(log => log.vehicleId === parseInt(selectedVehicleId, 10));
+        }
 
-    displayKeyMetrics(analyticsData);
-    displayAnalyticsCharts(logs, analyticsData);
-    displayRecentLogs(logs);
+        if (logsToShow.length < 2 && selectedVehicleId !== 'all') {
+            alert("Not enough data for this vehicle to generate analytics. Please add at least two fill-up logs with odometer readings for it.");
+        }
+
+        // Sort logs by date and then odometer to ensure correct order for calculations
+        logsToShow.sort((a, b) => {
+            const dateA = new Date(a.date);
+            const dateB = new Date(b.date);
+            if (dateA - dateB !== 0) return dateA - dateB;
+            return a.odometer - b.odometer;
+        });
+
+        const analyticsData = calculateAnalytics(logsToShow);
+
+        displayKeyMetrics(analyticsData);
+        displayAnalyticsCharts(logsToShow, analyticsData);
+        displayRecentLogs(logsToShow);
+    };
+
+    // Initial view
+    updateAnalyticsView('all');
+
+    // Add event listener for changes
+    vehicleFilterSelect.onchange = (e) => {
+        updateAnalyticsView(e.target.value);
+    };
 
     openModalWithAnimation(document.getElementById('analyticsModal'));
 }
