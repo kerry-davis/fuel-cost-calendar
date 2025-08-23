@@ -8,12 +8,12 @@
   "description": "A progressive web app for tracking vehicle fuel consumption, costs, and efficiency.",
   "icons": [
     {
-      "src": "icons/icon-192x192.png",
+      "src": "icons/icon-192x192.png?v=2",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "icons/icon-512x512.png",
+      "src": "icons/icon-512x512.png?v=2",
       "type": "image/png",
       "sizes": "512x512"
     }
