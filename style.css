@@ -30,11 +30,7 @@
     bottom: 4px;
     right: 5px;
     font-size: 0.8rem;
-    color: #6b7280; /* Gray-500 */
-}
-
-.dark .log-indicator {
-    color: #9ca3af; /* Gray-400 */
+    color: #80C7F2; /* fuel-icon-blue */
 }
 
 body.modal-open {
