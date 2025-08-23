@@ -27,35 +27,16 @@
 
 .log-indicator {
     position: absolute;
-    bottom: 2px;
-    right: 4px;
-    font-size: 0.9rem;
-    color: #3b82f6; /* Blue-500 */
-}
-
-.log-indicator i {
-    display: inline-block;
-    animation: fish-pulse 2s ease-in-out infinite;
+    bottom: 4px;
+    right: 5px;
+    font-size: 0.8rem;
+    color: #6b7280; /* Gray-500 */
 }
 
 .dark .log-indicator {
-    color: #60a5fa; /* Blue-400 */
+    color: #9ca3af; /* Gray-400 */
 }
 
-    .quality-excellent { background-color: #10b981; }
-    .quality-good { background-color: #3b82f6; }
-    .quality-average { background-color: #f59e0b; }
-    .quality-poor { background-color: #ef4444; }
-    .quality-text {
-        font-size: 0.7rem;
-        font-weight: bold;
-        opacity: 0;
-        transition: opacity 0.2s;
-        margin-top: 2px;
-    }
-    .calendar-day:hover .quality-text {
-        opacity: 1;
-    }
 body.modal-open {
     overflow: hidden;
 }
@@ -169,18 +150,6 @@ body.modal-open {
     .modal > div {
         margin: 0.5rem;
         max-width: 100%;
-    }
-}
-
-@keyframes fish-pulse {
-    0% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.2);
-    }
-    100% {
-        transform: scale(1);
     }
 }
 
