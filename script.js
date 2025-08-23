@@ -514,8 +514,8 @@ function saveFuelLog() {
         notes: document.getElementById('fuel-log-notes').value.trim(),
     };
 
-    if (!fuelLogData.totalCost && !fuelLogData.amount) {
-        alert("Please enter at least the total cost or the amount of fuel.");
+    if (!fuelLogData.totalCost && !fuelLogData.amount && !fuelLogData.odometer) {
+        alert("Please enter at least the total cost, fuel amount, or an odometer reading.");
         return;
     }
 
