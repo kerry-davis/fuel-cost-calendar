@@ -1,9 +1,10 @@
-const CACHE_NAME = 'maori-fishing-calendar-cache-v4';
+const CACHE_NAME = 'fuel-cost-calendar-cache-v1';
 const urlsToCache = [
   '/',
   'index.html',
   'style.css',
   'script.js',
+  'js/fuelTypes.js',
   'manifest.json',
   'icons/icon-192x192.png',
   'icons/icon-512x512.png',
