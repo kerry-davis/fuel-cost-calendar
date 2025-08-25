@@ -1,4 +1,6 @@
-const CACHE_NAME = 'fuel-cost-calendar-cache-v5';
+const CORE_CACHE_NAME = 'fuel-cost-calendar-core';
+const DYNAMIC_CACHE_NAME = `dynamic-cache-${new Date().toISOString().slice(0, 10)}`;
+
 const urlsToCache = [
   '/',
   'index.html',
@@ -15,44 +17,22 @@ const urlsToCache = [
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME)
+    caches.open(CORE_CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
-        // Use a more robust caching strategy that doesn't fail if one resource fails
-        const cachePromises = urlsToCache.map(urlToCache => {
-          return cache.add(urlToCache).catch(err => {
-            console.warn(`Failed to cache ${urlToCache}:`, err);
-          });
-        });
-        return Promise.all(cachePromises);
+        console.log('Opened core cache');
+        return cache.addAll(urlsToCache);
       })
   );
 });
 
-self.addEventListener('fetch', event => {
-  // Always try to get a fresh version from the network first.
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // If we get a valid response, we clone it and cache it for offline use.
-        if (response && response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            });
-        }
-        return response;
-      })
-      .catch(() => {
-        // If the network request fails (e.g., offline), return the cached version.
-        return caches.match(event.request);
-      })
-  );
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
+  const cacheWhitelist = [CORE_CACHE_NAME, DYNAMIC_CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
@@ -65,6 +45,33 @@ self.addEventListener('activate', event => {
       );
     })
   );
-  // Tell the active service worker to take control of the page immediately.
   return self.clients.claim();
+});
+
+self.addEventListener('fetch', event => {
+  // Stale-while-revalidate strategy
+  event.respondWith(
+    caches.match(event.request)
+      .then(cachedResponse => {
+        const fetchPromise = fetch(event.request).then(networkResponse => {
+          // If we get a valid response, we clone it and cache it for offline use.
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            const cacheName = urlsToCache.includes(event.request.url) ? CORE_CACHE_NAME : DYNAMIC_CACHE_NAME;
+            caches.open(cacheName)
+              .then(cache => {
+                cache.put(event.request, responseToCache);
+              });
+          }
+          return networkResponse;
+        });
+
+        // Return the cached response immediately, and the fetch promise will update the cache in the background.
+        return cachedResponse || fetchPromise;
+      })
+      .catch(() => {
+        // If both cache and network fail, this will be triggered.
+        // You can return a fallback page here if you have one.
+      })
+  );
 });
