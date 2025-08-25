@@ -1,6 +1,7 @@
 let db;
 let currentLogId = null; // Used when editing a specific log
-let amountManuallySet = false; // For real-time amount calculation
+let lastEdited = null; // For real-time amount calculation
+let originalLogData = null; // For checking for unsaved changes
 
 let currentDate = new Date();
 let currentMonth = currentDate.getMonth();
@@ -190,30 +191,37 @@ function setupEventListeners() {
     const priceInput = document.getElementById('fuel-log-price');
     const costInput = document.getElementById('fuel-log-cost');
     const amountInput = document.getElementById('fuel-log-amount');
+    let lastEdited = null; // Can be 'price', 'cost', or 'amount'
 
-    const updateAmount = () => {
-        if (amountManuallySet) {
-            return;
-        }
-
+    const recalculateFuelValues = () => {
         const price = parseFloat(priceInput.value) || 0;
         const totalCost = parseFloat(costInput.value) || 0;
+        const amount = parseFloat(amountInput.value) || 0;
 
-        if (price > 0 && totalCost > 0) {
-            const calculatedAmount = (totalCost / price).toFixed(2);
-            amountInput.value = calculatedAmount;
+        if (lastEdited === 'price' || lastEdited === 'cost') {
+            if (price > 0 && totalCost > 0) {
+                amountInput.value = (totalCost / price).toFixed(2);
+            }
+        } else if (lastEdited === 'amount') {
+            if (amount > 0 && price > 0) {
+                costInput.value = (amount * price).toFixed(2);
+            } else if (amount > 0 && totalCost > 0) {
+                priceInput.value = (totalCost / amount).toFixed(3);
+            }
         }
     };
 
-    if(priceInput) priceInput.addEventListener('input', updateAmount);
-    if(costInput) costInput.addEventListener('input', updateAmount);
-
+    if(priceInput) {
+        priceInput.addEventListener('focus', () => lastEdited = 'price');
+        priceInput.addEventListener('input', recalculateFuelValues);
+    }
+    if(costInput) {
+        costInput.addEventListener('focus', () => lastEdited = 'cost');
+        costInput.addEventListener('input', recalculateFuelValues);
+    }
     if(amountInput) {
-        amountInput.addEventListener('input', () => {
-            // If user types in the amount field, disable auto-calculation.
-            // Re-enable if they clear it.
-            amountManuallySet = !!amountInput.value;
-        });
+        amountInput.addEventListener('focus', () => lastEdited = 'amount');
+        amountInput.addEventListener('input', recalculateFuelValues);
     }
 
     const saveFuelLogBtn = document.getElementById('save-fuel-log-btn');
@@ -276,10 +284,10 @@ function setupEventListeners() {
     const fuelLogModal = document.getElementById('fuelLogModal');
     if (fuelLogModal) {
         const closeBtn = document.getElementById('closeFuelLogModal');
-        closeBtn.addEventListener('click', () => closeModalWithAnimation(fuelLogModal));
+        closeBtn.addEventListener('click', () => closeFuelLogModalWithCheck());
         fuelLogModal.addEventListener('click', (e) => {
             if (e.target === fuelLogModal) {
-                closeModalWithAnimation(fuelLogModal);
+                closeFuelLogModalWithCheck();
             }
         });
     }
@@ -522,8 +530,6 @@ async function openFuelLogModal(logId = null) {
         request.onsuccess = () => {
             const data = request.result;
             if (data) {
-                amountManuallySet = !!data.amount; // Set flag if amount exists in saved data
-
                 // If price and cost are available, but no amount, derive it for display.
                 if (data.price > 0 && data.totalCost > 0 && !data.amount) {
                     data.amount = parseFloat((data.totalCost / data.price).toFixed(2));
@@ -535,14 +541,63 @@ async function openFuelLogModal(logId = null) {
                 document.getElementById('fuel-log-amount').value = data.amount;
                 document.getElementById('fuel-log-odometer').value = data.odometer;
                 document.getElementById('fuel-log-notes').value = data.notes;
+
+                originalLogData = { ...data }; // Store a copy
             }
         };
     } else {
         formTitle.textContent = 'Log a New Fill-up';
         deleteBtn.classList.add('hidden');
-        amountManuallySet = false; // For new logs, allow auto-calculation
+        lastEdited = null; // For new logs, allow auto-calculation
+        originalLogData = {}; // For new logs, the original data is empty
     }
     openModalWithAnimation(fuelLogModal);
+}
+
+function getFuelLogFormData() {
+    return {
+        vehicleId: parseInt(document.getElementById('fuel-log-vehicle').value, 10),
+        fuelType: document.getElementById('fuel-log-type').value,
+        price: parseFloat(document.getElementById('fuel-log-price').value) || 0,
+        totalCost: parseFloat(document.getElementById('fuel-log-cost').value) || 0,
+        amount: parseFloat(document.getElementById('fuel-log-amount').value) || 0,
+        odometer: parseInt(document.getElementById('fuel-log-odometer').value, 10) || 0,
+        notes: document.getElementById('fuel-log-notes').value.trim(),
+    };
+}
+
+function hasFormChanged() {
+    if (!originalLogData) return false;
+    const currentData = getFuelLogFormData();
+
+    // For new logs, check if any field has been filled
+    if (!originalLogData.id) {
+        return Object.values(currentData).some(val => !!val);
+    }
+
+    // For existing logs, compare field by field
+    return (
+        currentData.vehicleId !== originalLogData.vehicleId ||
+        currentData.fuelType !== originalLogData.fuelType ||
+        currentData.price !== originalLogData.price ||
+        currentData.totalCost !== originalLogData.totalCost ||
+        currentData.amount !== originalLogData.amount ||
+        currentData.odometer !== originalLogData.odometer ||
+        currentData.notes !== originalLogData.notes
+    );
+}
+
+function closeFuelLogModalWithCheck() {
+    const fuelLogModal = document.getElementById('fuelLogModal');
+    if (hasFormChanged()) {
+        if (confirm("You have unsaved changes. Do you want to save them before closing?")) {
+            saveFuelLog(); // This already closes the modal on success
+        } else {
+            closeModalWithAnimation(fuelLogModal);
+        }
+    } else {
+        closeModalWithAnimation(fuelLogModal);
+    }
 }
 
 function saveFuelLog() {
