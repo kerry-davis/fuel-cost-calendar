@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fuel-cost-calendar-cache-v1';
+const CACHE_NAME = 'fuel-cost-calendar-cache-v2';
 const urlsToCache = [
   '/',
   'index.html',
