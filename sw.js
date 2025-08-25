@@ -1,9 +1,9 @@
-const CACHE_NAME = 'fuel-cost-calendar-cache-v3';
+const CACHE_NAME = 'fuel-cost-calendar-cache-v4';
 const urlsToCache = [
   '/',
   'index.html',
   'style.css',
-  'script.js',
+  'script.v2.js',
   'js/fuelTypes.js',
   'manifest.json',
   'icons/icon-192x192.png',
