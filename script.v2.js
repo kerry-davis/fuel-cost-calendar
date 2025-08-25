@@ -1,5 +1,6 @@
 let db;
 let currentLogId = null; // Used when editing a specific log
+let amountManuallySet = false; // For real-time amount calculation
 
 let currentDate = new Date();
 let currentMonth = currentDate.getMonth();
@@ -184,6 +185,36 @@ function setupEventListeners() {
     });
     closeModal.addEventListener('click', hideModal);
     dayDetailModal.addEventListener('click', handleModalClicks);
+
+    // Listeners for real-time amount calculation
+    const priceInput = document.getElementById('fuel-log-price');
+    const costInput = document.getElementById('fuel-log-cost');
+    const amountInput = document.getElementById('fuel-log-amount');
+
+    const updateAmount = () => {
+        if (amountManuallySet) {
+            return;
+        }
+
+        const price = parseFloat(priceInput.value) || 0;
+        const totalCost = parseFloat(costInput.value) || 0;
+
+        if (price > 0 && totalCost > 0) {
+            const calculatedAmount = (totalCost / price).toFixed(2);
+            amountInput.value = calculatedAmount;
+        }
+    };
+
+    if(priceInput) priceInput.addEventListener('input', updateAmount);
+    if(costInput) costInput.addEventListener('input', updateAmount);
+
+    if(amountInput) {
+        amountInput.addEventListener('input', () => {
+            // If user types in the amount field, disable auto-calculation.
+            // Re-enable if they clear it.
+            amountManuallySet = !!amountInput.value;
+        });
+    }
 
     const saveFuelLogBtn = document.getElementById('save-fuel-log-btn');
     if (saveFuelLogBtn) {
@@ -491,9 +522,11 @@ async function openFuelLogModal(logId = null) {
         request.onsuccess = () => {
             const data = request.result;
             if (data) {
+                amountManuallySet = !!data.amount; // Set flag if amount exists in saved data
+
                 // If price and cost are available, but no amount, derive it for display.
                 if (data.price > 0 && data.totalCost > 0 && !data.amount) {
-                    data.amount = data.totalCost / data.price;
+                    data.amount = parseFloat((data.totalCost / data.price).toFixed(2));
                 }
                 vehicleSelect.value = data.vehicleId;
                 fuelTypeSelect.value = data.fuelType;
@@ -507,6 +540,7 @@ async function openFuelLogModal(logId = null) {
     } else {
         formTitle.textContent = 'Log a New Fill-up';
         deleteBtn.classList.add('hidden');
+        amountManuallySet = false; // For new logs, allow auto-calculation
     }
     openModalWithAnimation(fuelLogModal);
 }
@@ -531,7 +565,7 @@ function saveFuelLog() {
 
     // If price and cost are entered, but no amount, derive it.
     if (fuelLogData.price > 0 && fuelLogData.totalCost > 0 && !fuelLogData.amount) {
-        fuelLogData.amount = fuelLogData.totalCost / fuelLogData.price;
+        fuelLogData.amount = parseFloat((fuelLogData.totalCost / fuelLogData.price).toFixed(2));
     }
 
     if (!fuelLogData.totalCost && !fuelLogData.amount && !fuelLogData.odometer) {
