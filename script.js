@@ -861,42 +861,37 @@ function calculateAnalytics(logs) {
 
     if (logs.length === 0) return metrics;
 
-    let lastOdometer = 0;
-
-    // Find the first valid odometer reading in the sorted logs
-    const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
-    if (firstValidLogIndex === -1) return metrics; // No logs with odometer readings
-
-    lastOdometer = logs[firstValidLogIndex].odometer;
-
-    for (let i = firstValidLogIndex + 1; i < logs.length; i++) {
-        const log = logs[i];
+    // Calculate total spend and amount from all logs first
+    logs.forEach(log => {
         metrics.totalSpend += log.totalCost;
         metrics.totalAmount += log.amount;
-
-        if (log.odometer > 0 && log.odometer > lastOdometer) {
-            const distance = log.odometer - lastOdometer;
-            metrics.totalDistance += distance;
-
-            // Efficiency is based on the amount of the PREVIOUS fill-up, which fueled this leg of the journey.
-            const fuelUsed = logs[i - 1].amount;
-            if (fuelUsed > 0 && distance > 0) {
-                const efficiency = (fuelUsed / distance) * 100; // L/100km
-                metrics.efficiencyReadings.push(efficiency);
-                metrics.efficiencyDates.push(log.date); // Associate the efficiency reading with the date of the fill-up
-            }
-            lastOdometer = log.odometer;
-        }
-    }
-     // Add the costs and amounts from the logs before the first odometer reading
-    for (let i = 0; i < firstValidLogIndex + 1; i++) {
-        metrics.totalSpend += logs[i].totalCost;
-        metrics.totalAmount += logs[i].amount;
-    }
-
+    });
 
     if (metrics.totalAmount > 0) {
         metrics.avgPrice = metrics.totalSpend / metrics.totalAmount;
+    }
+
+    // Then, calculate distance and efficiency if possible
+    const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
+    if (firstValidLogIndex !== -1) {
+        let lastOdometer = logs[firstValidLogIndex].odometer;
+
+        for (let i = firstValidLogIndex + 1; i < logs.length; i++) {
+            const log = logs[i];
+            if (log.odometer > 0 && log.odometer > lastOdometer) {
+                const distance = log.odometer - lastOdometer;
+                metrics.totalDistance += distance;
+
+                // Efficiency is based on the amount of the PREVIOUS fill-up
+                const fuelUsed = logs[i - 1].amount;
+                if (fuelUsed > 0 && distance > 0) {
+                    const efficiency = (fuelUsed / distance) * 100; // L/100km
+                    metrics.efficiencyReadings.push(efficiency);
+                    metrics.efficiencyDates.push(log.date);
+                }
+                lastOdometer = log.odometer;
+            }
+        }
     }
 
     if (metrics.efficiencyReadings.length > 0) {
@@ -940,7 +935,17 @@ function displayAnalyticsCharts(logs, metrics) {
             tension: 0.1
         }]
     };
-    activeCharts.cost = new Chart(costCtx, { type: 'line', data: costData });
+    activeCharts.cost = new Chart(costCtx, {
+        type: 'line',
+        data: costData,
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
 
     // Efficiency Chart
     const efficiencyCtx = document.getElementById('efficiency-chart').getContext('2d');
