@@ -406,10 +406,21 @@ async function renderCalendar() {
             dayElement.appendChild(dayNumber);
 
             if (loggedDays.has(day)) {
+                const dayInfo = loggedDays.get(day);
                 const logIndicator = document.createElement('span');
                 logIndicator.className = 'log-indicator';
-                logIndicator.innerHTML = '<i class="fas fa-gas-pump"></i>';
-                dayElement.appendChild(logIndicator);
+
+                let iconClass = '';
+                if (dayInfo.hasFuelLog) {
+                    iconClass = 'fas fa-gas-pump';
+                } else if (dayInfo.hasOdometerLog) {
+                    iconClass = 'fas fa-car';
+                }
+
+                if (iconClass) {
+                    logIndicator.innerHTML = `<i class="${iconClass}"></i>`;
+                    dayElement.appendChild(logIndicator);
+                }
             }
 
             if (currentYear === new Date().getFullYear() && currentMonth === new Date().getMonth() && day === new Date().getDate()) {
@@ -614,27 +625,37 @@ async function displayFuelLogsForDay(year, month, day) {
 function getLoggedDaysForMonth(startDate, endDate) {
     return new Promise((resolve, reject) => {
         if (!db) {
-            console.warn("DB not initialized, resolving with empty set.");
-            resolve(new Set());
+            console.warn("DB not initialized, resolving with empty map.");
+            resolve(new Map());
             return;
         }
         const transaction = db.transaction(["fuel_logs"], "readonly");
         const objectStore = transaction.objectStore("fuel_logs");
         const index = objectStore.index("date");
 
-        // Timezone-safe method to create YYYY-MM-DD strings
         const startStr = `${startDate.getFullYear()}-${(startDate.getMonth() + 1).toString().padStart(2, '0')}-${startDate.getDate().toString().padStart(2, '0')}`;
         const endStr = `${endDate.getFullYear()}-${(endDate.getMonth() + 1).toString().padStart(2, '0')}-${endDate.getDate().toString().padStart(2, '0')}`;
         const range = IDBKeyRange.bound(startStr, endStr);
 
         const request = index.getAll(range);
-        const loggedDays = new Set();
+        const loggedDays = new Map();
 
         request.onsuccess = () => {
             request.result.forEach(log => {
-                if (log && log.date) {
-                    const day = parseInt(log.date.split('-')[2], 10);
-                    loggedDays.add(day);
+                if (!log || !log.date) return;
+
+                const day = parseInt(log.date.split('-')[2], 10);
+                if (!loggedDays.has(day)) {
+                    loggedDays.set(day, { hasFuelLog: false, hasOdometerLog: false });
+                }
+
+                const dayInfo = loggedDays.get(day);
+                const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
+
+                if (isOdometerOnly) {
+                    dayInfo.hasOdometerLog = true;
+                } else {
+                    dayInfo.hasFuelLog = true;
                 }
             });
             resolve(loggedDays);
@@ -806,11 +827,14 @@ async function loadAnalytics() {
             return a.odometer - b.odometer;
         });
 
-        const analyticsData = calculateAnalytics(logsToShow);
+        // Filter out odometer-only logs for cost and efficiency calculations
+        const logsForAnalytics = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
+
+        const analyticsData = calculateAnalytics(logsForAnalytics);
 
         displayKeyMetrics(analyticsData);
-        displayAnalyticsCharts(logsToShow, analyticsData);
-        displayRecentLogs(logsToShow);
+        displayAnalyticsCharts(logsForAnalytics, analyticsData); // Pass filtered logs to charts
+        displayRecentLogs(logsToShow); // Show all logs in the "Recent Logs" list
     };
 
     // Initial view
