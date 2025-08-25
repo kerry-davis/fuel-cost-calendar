@@ -1082,6 +1082,9 @@ function registerServiceWorker() {
       navigator.serviceWorker.register('sw.js').then(registration => {
         console.log('ServiceWorker registration successful with scope: ', registration.scope);
 
+        // Force an update check on every page load.
+        registration.update();
+
         // Track updates to the service worker.
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;

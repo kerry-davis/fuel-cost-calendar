@@ -1,5 +1,5 @@
-const CORE_CACHE_NAME = 'fuel-cost-calendar-core';
-const DYNAMIC_CACHE_NAME = `dynamic-cache-${new Date().toISOString().slice(0, 10)}`;
+const CACHE_VERSION = new Date().getTime();
+const CACHE_NAME = `fuel-cost-calendar-cache-${CACHE_VERSION}`;
 
 const urlsToCache = [
   '/',
@@ -17,27 +17,20 @@ const urlsToCache = [
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CORE_CACHE_NAME)
+    caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened core cache');
+        console.log('Opened cache: ' + CACHE_NAME);
         return cache.addAll(urlsToCache);
       })
   );
 });
 
-self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
 self.addEventListener('activate', event => {
-  const cacheWhitelist = [CORE_CACHE_NAME, DYNAMIC_CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+          if (cacheName !== CACHE_NAME) {
             console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -49,29 +42,22 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Stale-while-revalidate strategy
   event.respondWith(
     caches.match(event.request)
-      .then(cachedResponse => {
-        const fetchPromise = fetch(event.request).then(networkResponse => {
-          // If we get a valid response, we clone it and cache it for offline use.
-          if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            const cacheName = urlsToCache.includes(event.request.url) ? CORE_CACHE_NAME : DYNAMIC_CACHE_NAME;
-            caches.open(cacheName)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
-              });
-          }
-          return networkResponse;
-        });
-
-        // Return the cached response immediately, and the fetch promise will update the cache in the background.
-        return cachedResponse || fetchPromise;
-      })
-      .catch(() => {
-        // If both cache and network fail, this will be triggered.
-        // You can return a fallback page here if you have one.
-      })
+      .then(response => {
+        // Cache hit - return response
+        if (response) {
+          return response;
+        }
+        // Not in cache - fetch from network
+        return fetch(event.request);
+      }
+    )
   );
+});
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
