@@ -491,6 +491,10 @@ async function openFuelLogModal(logId = null) {
         request.onsuccess = () => {
             const data = request.result;
             if (data) {
+                // If price and cost are available, but no amount, derive it for display.
+                if (data.price > 0 && data.totalCost > 0 && !data.amount) {
+                    data.amount = data.totalCost / data.price;
+                }
                 vehicleSelect.value = data.vehicleId;
                 fuelTypeSelect.value = data.fuelType;
                 document.getElementById('fuel-log-price').value = data.price;
@@ -524,6 +528,11 @@ function saveFuelLog() {
         odometer: parseInt(document.getElementById('fuel-log-odometer').value, 10) || 0,
         notes: document.getElementById('fuel-log-notes').value.trim(),
     };
+
+    // If price and cost are entered, but no amount, derive it.
+    if (fuelLogData.price > 0 && fuelLogData.totalCost > 0 && !fuelLogData.amount) {
+        fuelLogData.amount = fuelLogData.totalCost / fuelLogData.price;
+    }
 
     if (!fuelLogData.totalCost && !fuelLogData.amount && !fuelLogData.odometer) {
         alert("Please enter at least the total cost, fuel amount, or an odometer reading.");
