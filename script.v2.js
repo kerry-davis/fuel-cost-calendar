@@ -1131,14 +1131,68 @@ function addSwipeListeners(element, onSwipeLeft, onSwipeRight) {
 
 document.addEventListener('DOMContentLoaded', initCalendar);
 
-// --- NEW CODE (Correct) ---
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    // Corrected the path to be relative.
-    navigator.serviceWorker.register('sw.js').then(registration => {
-      console.log('ServiceWorker registration successful with scope: ', registration.scope);
-    }, err => {
-      console.log('ServiceWorker registration failed: ', err);
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then(registration => {
+        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+
+        // Force an update check on every page load.
+        registration.update();
+
+        // Track updates to the service worker.
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New content is available; show a toast notification.
+              showUpdateToast(registration);
+            }
+          });
+        });
+      }).catch(err => {
+        console.log('ServiceWorker registration failed: ', err);
+      });
+
+      let refreshing;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        window.location.reload();
+        refreshing = true;
+      });
     });
+  }
+}
+
+function showUpdateToast(registration) {
+  const toast = document.createElement('div');
+  toast.id = 'update-toast';
+  toast.style.position = 'fixed';
+  toast.style.bottom = '20px';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.backgroundColor = '#333';
+  toast.style.color = 'white';
+  toast.style.padding = '15px';
+  toast.style.borderRadius = '5px';
+  toast.style.zIndex = '1000';
+  toast.style.display = 'flex';
+  toast.style.alignItems = 'center';
+  toast.innerHTML = `
+    <span style="margin-right: 15px;">A new version of the app is available.</span>
+    <button id="update-button" style="background-color: #4CAF50; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">
+      Update
+    </button>
+  `;
+  document.body.appendChild(toast);
+
+  document.getElementById('update-button').addEventListener('click', () => {
+    const worker = registration.waiting;
+    if (worker) {
+      worker.postMessage({ type: 'SKIP_WAITING' });
+    }
+    toast.style.display = 'none';
   });
 }
+
+registerServiceWorker();
