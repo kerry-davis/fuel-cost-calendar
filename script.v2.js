@@ -827,13 +827,14 @@ async function loadAnalytics() {
             return a.odometer - b.odometer;
         });
 
-        // Filter out odometer-only logs for cost and efficiency calculations
-        const logsForAnalytics = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
+        // Pass the full, sorted list of logs to the main analytics function
+        const analyticsData = calculateAnalytics(logsToShow);
 
-        const analyticsData = calculateAnalytics(logsForAnalytics);
+        // For the cost chart, we still want to filter out odo-only logs so they don't show up as 0 cost
+        const logsForCostChart = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
 
         displayKeyMetrics(analyticsData);
-        displayAnalyticsCharts(logsForAnalytics, analyticsData); // Pass filtered logs to charts
+        displayAnalyticsCharts(logsForCostChart, analyticsData); // Pass filtered logs to charts
         displayRecentLogs(logsToShow); // Show all logs in the "Recent Logs" list
     };
 
@@ -861,35 +862,52 @@ function calculateAnalytics(logs) {
 
     if (logs.length === 0) return metrics;
 
-    // Calculate total spend and amount from all logs first
+    // Calculate total spend and amount from logs that are not odometer-only
     logs.forEach(log => {
-        metrics.totalSpend += log.totalCost;
-        metrics.totalAmount += log.amount;
+        const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
+        if (!isOdometerOnly) {
+            metrics.totalSpend += log.totalCost;
+            metrics.totalAmount += log.amount;
+        }
     });
 
     if (metrics.totalAmount > 0) {
         metrics.avgPrice = metrics.totalSpend / metrics.totalAmount;
     }
 
-    // Then, calculate distance and efficiency if possible
+    // Then, calculate distance and efficiency using ALL logs, as they are sorted by date and odometer
     const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
+
     if (firstValidLogIndex !== -1) {
         let lastOdometer = logs[firstValidLogIndex].odometer;
 
         for (let i = firstValidLogIndex + 1; i < logs.length; i++) {
-            const log = logs[i];
-            if (log.odometer > 0 && log.odometer > lastOdometer) {
-                const distance = log.odometer - lastOdometer;
+            const currentLog = logs[i];
+
+            if (currentLog.odometer > 0 && currentLog.odometer > lastOdometer) {
+                const distance = currentLog.odometer - lastOdometer;
                 metrics.totalDistance += distance;
 
-                // Efficiency is based on the amount of the PREVIOUS fill-up
-                const fuelUsed = logs[i - 1].amount;
+                // Efficiency is based on the amount of the last fill-up.
+                // We search backwards from the previous log to find the last time fuel was added.
+                let fuelUsed = 0;
+                for (let j = i - 1; j >= 0; j--) {
+                    const prevLog = logs[j];
+                    if (prevLog.amount > 0) {
+                        fuelUsed = prevLog.amount;
+                        break; // Found the last fill-up, stop searching.
+                    }
+                }
+
                 if (fuelUsed > 0 && distance > 0) {
                     const efficiency = (fuelUsed / distance) * 100; // L/100km
                     metrics.efficiencyReadings.push(efficiency);
-                    metrics.efficiencyDates.push(log.date);
+                    metrics.efficiencyDates.push(currentLog.date);
                 }
-                lastOdometer = log.odometer;
+            }
+            // Update lastOdometer if the current log has a valid reading
+            if (currentLog.odometer > 0) {
+                lastOdometer = currentLog.odometer;
             }
         }
     }
