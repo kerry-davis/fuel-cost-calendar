@@ -406,10 +406,21 @@ async function renderCalendar() {
             dayElement.appendChild(dayNumber);
 
             if (loggedDays.has(day)) {
+                const dayInfo = loggedDays.get(day);
                 const logIndicator = document.createElement('span');
                 logIndicator.className = 'log-indicator';
-                logIndicator.innerHTML = '<i class="fas fa-gas-pump"></i>';
-                dayElement.appendChild(logIndicator);
+
+                let iconClass = '';
+                if (dayInfo.hasFuelLog) {
+                    iconClass = 'fas fa-gas-pump';
+                } else if (dayInfo.hasOdometerLog) {
+                    iconClass = 'fas fa-car';
+                }
+
+                if (iconClass) {
+                    logIndicator.innerHTML = `<i class="${iconClass}"></i>`;
+                    dayElement.appendChild(logIndicator);
+                }
             }
 
             if (currentYear === new Date().getFullYear() && currentMonth === new Date().getMonth() && day === new Date().getDate()) {
@@ -614,27 +625,37 @@ async function displayFuelLogsForDay(year, month, day) {
 function getLoggedDaysForMonth(startDate, endDate) {
     return new Promise((resolve, reject) => {
         if (!db) {
-            console.warn("DB not initialized, resolving with empty set.");
-            resolve(new Set());
+            console.warn("DB not initialized, resolving with empty map.");
+            resolve(new Map());
             return;
         }
         const transaction = db.transaction(["fuel_logs"], "readonly");
         const objectStore = transaction.objectStore("fuel_logs");
         const index = objectStore.index("date");
 
-        // Timezone-safe method to create YYYY-MM-DD strings
         const startStr = `${startDate.getFullYear()}-${(startDate.getMonth() + 1).toString().padStart(2, '0')}-${startDate.getDate().toString().padStart(2, '0')}`;
         const endStr = `${endDate.getFullYear()}-${(endDate.getMonth() + 1).toString().padStart(2, '0')}-${endDate.getDate().toString().padStart(2, '0')}`;
         const range = IDBKeyRange.bound(startStr, endStr);
 
         const request = index.getAll(range);
-        const loggedDays = new Set();
+        const loggedDays = new Map();
 
         request.onsuccess = () => {
             request.result.forEach(log => {
-                if (log && log.date) {
-                    const day = parseInt(log.date.split('-')[2], 10);
-                    loggedDays.add(day);
+                if (!log || !log.date) return;
+
+                const day = parseInt(log.date.split('-')[2], 10);
+                if (!loggedDays.has(day)) {
+                    loggedDays.set(day, { hasFuelLog: false, hasOdometerLog: false });
+                }
+
+                const dayInfo = loggedDays.get(day);
+                const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
+
+                if (isOdometerOnly) {
+                    dayInfo.hasOdometerLog = true;
+                } else {
+                    dayInfo.hasFuelLog = true;
                 }
             });
             resolve(loggedDays);
@@ -806,11 +827,15 @@ async function loadAnalytics() {
             return a.odometer - b.odometer;
         });
 
+        // Pass the full, sorted list of logs to the main analytics function
         const analyticsData = calculateAnalytics(logsToShow);
 
+        // For the cost chart, we still want to filter out odo-only logs so they don't show up as 0 cost
+        const logsForCostChart = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
+
         displayKeyMetrics(analyticsData);
-        displayAnalyticsCharts(logsToShow, analyticsData);
-        displayRecentLogs(logsToShow);
+        displayAnalyticsCharts(logsForCostChart, analyticsData); // Pass filtered logs to charts
+        displayRecentLogs(logsToShow); // Show all logs in the "Recent Logs" list
     };
 
     // Initial view
@@ -837,42 +862,54 @@ function calculateAnalytics(logs) {
 
     if (logs.length === 0) return metrics;
 
-    let lastOdometer = 0;
-
-    // Find the first valid odometer reading in the sorted logs
-    const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
-    if (firstValidLogIndex === -1) return metrics; // No logs with odometer readings
-
-    lastOdometer = logs[firstValidLogIndex].odometer;
-
-    for (let i = firstValidLogIndex + 1; i < logs.length; i++) {
-        const log = logs[i];
-        metrics.totalSpend += log.totalCost;
-        metrics.totalAmount += log.amount;
-
-        if (log.odometer > 0 && log.odometer > lastOdometer) {
-            const distance = log.odometer - lastOdometer;
-            metrics.totalDistance += distance;
-
-            // Efficiency is based on the amount of the PREVIOUS fill-up, which fueled this leg of the journey.
-            const fuelUsed = logs[i - 1].amount;
-            if (fuelUsed > 0 && distance > 0) {
-                const efficiency = (fuelUsed / distance) * 100; // L/100km
-                metrics.efficiencyReadings.push(efficiency);
-                metrics.efficiencyDates.push(log.date); // Associate the efficiency reading with the date of the fill-up
-            }
-            lastOdometer = log.odometer;
+    // Calculate total spend and amount from logs that are not odometer-only
+    logs.forEach(log => {
+        const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
+        if (!isOdometerOnly) {
+            metrics.totalSpend += log.totalCost;
+            metrics.totalAmount += log.amount;
         }
-    }
-     // Add the costs and amounts from the logs before the first odometer reading
-    for (let i = 0; i < firstValidLogIndex + 1; i++) {
-        metrics.totalSpend += logs[i].totalCost;
-        metrics.totalAmount += logs[i].amount;
-    }
-
+    });
 
     if (metrics.totalAmount > 0) {
         metrics.avgPrice = metrics.totalSpend / metrics.totalAmount;
+    }
+
+    // Then, calculate distance and efficiency using ALL logs, as they are sorted by date and odometer
+    const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
+
+    if (firstValidLogIndex !== -1) {
+        let lastOdometer = logs[firstValidLogIndex].odometer;
+
+        for (let i = firstValidLogIndex + 1; i < logs.length; i++) {
+            const currentLog = logs[i];
+
+            if (currentLog.odometer > 0 && currentLog.odometer > lastOdometer) {
+                const distance = currentLog.odometer - lastOdometer;
+                metrics.totalDistance += distance;
+
+                // Efficiency is based on the amount of the last fill-up.
+                // We search backwards from the previous log to find the last time fuel was added.
+                let fuelUsed = 0;
+                for (let j = i - 1; j >= 0; j--) {
+                    const prevLog = logs[j];
+                    if (prevLog.amount > 0) {
+                        fuelUsed = prevLog.amount;
+                        break; // Found the last fill-up, stop searching.
+                    }
+                }
+
+                if (fuelUsed > 0 && distance > 0) {
+                    const efficiency = (fuelUsed / distance) * 100; // L/100km
+                    metrics.efficiencyReadings.push(efficiency);
+                    metrics.efficiencyDates.push(currentLog.date);
+                }
+            }
+            // Update lastOdometer if the current log has a valid reading
+            if (currentLog.odometer > 0) {
+                lastOdometer = currentLog.odometer;
+            }
+        }
     }
 
     if (metrics.efficiencyReadings.length > 0) {
@@ -916,7 +953,17 @@ function displayAnalyticsCharts(logs, metrics) {
             tension: 0.1
         }]
     };
-    activeCharts.cost = new Chart(costCtx, { type: 'line', data: costData });
+    activeCharts.cost = new Chart(costCtx, {
+        type: 'line',
+        data: costData,
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
 
     // Efficiency Chart
     const efficiencyCtx = document.getElementById('efficiency-chart').getContext('2d');
