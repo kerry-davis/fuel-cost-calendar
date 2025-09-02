@@ -924,7 +924,7 @@ async function updateAnalyticsView(selectedVehicleId) {
         return;
     }
 
-    let logsToShow = allLogs;
+    let logsToShow = [...allLogs];
     if (selectedVehicleId !== 'all') {
         logsToShow = logsToShow.filter(log => String(log.vehicleId) === selectedVehicleId);
     }
