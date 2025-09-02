@@ -932,7 +932,7 @@ async function loadAnalytics() {
     const updateAnalyticsView = (selectedVehicleId) => {
         let logsToShow = allLogs;
         if (selectedVehicleId !== 'all') {
-            logsToShow = allLogs.filter(log => log.vehicleId === parseInt(selectedVehicleId, 10));
+            logsToShow = allLogs.filter(log => String(log.vehicleId) === selectedVehicleId);
         }
 
 
