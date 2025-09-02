@@ -1034,7 +1034,14 @@ function calculateAnalytics(logs) {
                     const distance = currentLog.odometer - lastOdometer;
                     metrics.totalDistance += distance;
 
-                    const fuelUsed = currentLog.amount;
+                    let fuelUsed = 0;
+                    for (let j = i - 1; j >= 0; j--) {
+                        const prevLog = vehicleLogs[j];
+                        if (prevLog.amount > 0) {
+                            fuelUsed = prevLog.amount;
+                            break;
+                        }
+                    }
 
                     if (fuelUsed > 0 && distance > 0) {
                         const efficiency = (fuelUsed / distance) * 100;
