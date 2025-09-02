@@ -935,9 +935,6 @@ async function loadAnalytics() {
             logsToShow = allLogs.filter(log => log.vehicleId === parseInt(selectedVehicleId, 10));
         }
 
-        if (logsToShow.length < 2 && selectedVehicleId !== 'all') {
-            alert("Not enough data for this vehicle to generate analytics. Please add at least two fill-up logs with odometer readings for it.");
-        }
 
         // Sort logs by date and then odometer to ensure correct order for calculations
         logsToShow.sort((a, b) => {
