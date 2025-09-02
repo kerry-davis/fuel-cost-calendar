@@ -782,7 +782,9 @@ function getAllData(storeName) {
 
 async function exportData(format = 'json') {
     const logs = await getAllData('fuel_logs');
-    if (logs.length === 0) {
+    const vehicles = await getAllData('vehicles');
+
+    if (logs.length === 0 && vehicles.length === 0) {
         alert("No data to export.");
         return;
     }
@@ -790,13 +792,23 @@ async function exportData(format = 'json') {
     let dataStr;
     let filename;
 
+    // Generate timestamp
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const timestamp = `${year}_${month}-${day}_${hours}${minutes}`;
+
     if (format === 'json') {
         const exportObject = {
             fuel_logs: logs,
+            vehicles: vehicles,
             fuel_types: JSON.parse(localStorage.getItem('fuelTypes') || '[]')
         };
         dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2));
-        filename = "fuel_log_export.json";
+        filename = `fuel_log_export_${timestamp}.json`;
     } else { // csv
         const header = "id,date,fuelType,price,totalCost,amount,odometer,notes\n";
         const rows = logs.map(log => {
@@ -805,7 +817,7 @@ async function exportData(format = 'json') {
         }).join("\n");
         const csvContent = header + rows;
         dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
-        filename = "fuel_log_export.csv";
+        filename = `fuel_log_export_${timestamp}.csv`;
     }
 
     const downloadAnchorNode = document.createElement('a');
@@ -828,54 +840,64 @@ function importData(event) {
         try {
             const data = JSON.parse(e.target.result);
 
-            if (typeof data !== 'object' || data === null || !data.fuel_logs) {
-                 throw new Error("Invalid data format. Expecting a JSON file with a 'fuel_logs' property.");
+            if (typeof data !== 'object' || data === null || (!data.fuel_logs && !data.vehicles)) {
+                 throw new Error("Invalid data format. Expecting a JSON file with a 'fuel_logs' or 'vehicles' property.");
             }
 
-            const confirmed = confirm(`Are you sure you want to import data from "${filename}"? This will overwrite ALL existing log data and fuel types.`);
+            const confirmed = confirm(`Are you sure you want to import data from "${filename}"? This will overwrite ALL existing data (logs, vehicles, and fuel types).`);
             if (confirmed) {
-                // Import fuel types
-                if (data.fuel_types && Array.isArray(data.fuel_types)) {
-                    localStorage.setItem('fuelTypes', JSON.stringify(data.fuel_types));
-                }
+                const transaction = db.transaction(['fuel_logs', 'vehicles'], 'readwrite');
+                const fuelLogsStore = transaction.objectStore('fuel_logs');
+                const vehiclesStore = transaction.objectStore('vehicles');
 
-                // Clear and import fuel logs
-                const transaction = db.transaction(['fuel_logs'], "readwrite");
-                const store = transaction.objectStore('fuel_logs');
-                const clearRequest = store.clear();
+                let logImportCount = 0;
+                let vehicleImportCount = 0;
 
-                clearRequest.onsuccess = () => {
-                    console.log("Old fuel logs cleared. Starting import...");
-                    let importCount = 0;
-                    data.fuel_logs.forEach(log => {
-                        // The `put` method will respect the `id` from the import file if it exists
-                        if(log.id) delete log.id; // Let the DB auto-increment the ID to avoid conflicts
-                        store.add(log);
-                        importCount++;
-                    });
+                transaction.onerror = (event) => {
+                    console.error("Error during data import transaction:", event.target.error);
+                    alert("An error occurred during import. The database transaction failed.");
+                };
 
-                    transaction.oncomplete = () => {
-                        const message = `Successfully imported ${importCount} log(s) and fuel types from "${filename}". The page will now reload.`;
-                        console.log(message);
-                        alert(message);
-                        window.location.reload();
-                    };
+                transaction.oncomplete = () => {
+                    const message = `Successfully imported ${logImportCount} log(s), ${vehicleImportCount} vehicle(s), and fuel types from "${filename}". The page will now reload.`;
+                    console.log(message);
+                    alert(message);
+                    window.location.reload();
+                };
 
-                    transaction.onerror = (event) => {
-                        console.error("Error during data import:", event.target.error);
-                        alert("An error occurred during import. Data may be partially imported.");
+                const clearLogsRequest = fuelLogsStore.clear();
+                clearLogsRequest.onsuccess = () => {
+                    console.log('Old logs cleared.');
+                    const clearVehiclesRequest = vehiclesStore.clear();
+                    clearVehiclesRequest.onsuccess = () => {
+                        console.log('Old vehicles cleared.');
+
+                        if (data.fuel_types && Array.isArray(data.fuel_types)) {
+                            localStorage.setItem('fuelTypes', JSON.stringify(data.fuel_types));
+                        }
+
+                        if (data.fuel_logs && Array.isArray(data.fuel_logs)) {
+                            data.fuel_logs.forEach(log => {
+                                if (log.id) delete log.id;
+                                fuelLogsStore.add(log);
+                                logImportCount++;
+                            });
+                        }
+
+                        if (data.vehicles && Array.isArray(data.vehicles)) {
+                            data.vehicles.forEach(vehicle => {
+                                if (vehicle.id) delete vehicle.id;
+                                vehiclesStore.add(vehicle);
+                                vehicleImportCount++;
+                            });
+                        }
                     };
                 };
-                clearRequest.onerror = (event) => {
-                     console.error("Error clearing object store:", event.target.error);
-                     alert("Error clearing old data. Import aborted.");
-                }
             }
         } catch (error) {
             console.error("Error parsing or processing import file:", error);
             alert(`Could not import data from "${filename}". Error: ${error.message}`);
         } finally {
-            // Reset file input so the same file can be selected again
             event.target.value = '';
         }
     };
@@ -891,58 +913,64 @@ function destroyActiveCharts() {
     activeCharts = {};
 }
 
-async function loadAnalytics() {
+async function updateAnalyticsView(selectedVehicleId) {
     const allLogs = await getAllData('fuel_logs');
-    const allVehicles = await getAllData('vehicles');
 
-    if (allLogs.length < 1) {
+    if (allLogs.length < 1 && selectedVehicleId === 'all') {
         alert("No logs available to generate analytics.");
+        displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
+        destroyActiveCharts();
+        document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs to analyze.</p>';
         return;
     }
 
-    // Populate vehicle filter dropdown
+    let logsToShow = [...allLogs];
+    if (selectedVehicleId !== 'all') {
+        logsToShow = logsToShow.filter(log => String(log.vehicleId) === selectedVehicleId);
+    }
+
+    if (logsToShow.length === 0 && selectedVehicleId !== 'all') {
+        displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
+        destroyActiveCharts();
+        document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs found for this vehicle.</p>';
+        return;
+    }
+
+    logsToShow.sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (dateA - dateB !== 0) return dateA - dateB;
+        return a.odometer - b.odometer;
+    });
+
+    const analyticsData = calculateAnalytics(logsToShow);
+    const logsForCostChart = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
+
+    displayKeyMetrics(analyticsData);
+    displayAnalyticsCharts(logsForCostChart, analyticsData);
+    displayRecentLogs(logsToShow);
+}
+
+async function loadAnalytics() {
+    const allVehicles = await getAllData('vehicles');
     const vehicleFilterSelect = document.getElementById('analytics-vehicle-filter');
+
+    // Populate dropdown
     vehicleFilterSelect.innerHTML = '<option value="all">All Vehicles</option>';
     allVehicles.forEach(v => {
         vehicleFilterSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
     });
 
-    const updateAnalyticsView = (selectedVehicleId) => {
-        let logsToShow = allLogs;
-        if (selectedVehicleId !== 'all') {
-            logsToShow = allLogs.filter(log => log.vehicleId === parseInt(selectedVehicleId, 10));
-        }
+    // To prevent multiple listeners, we clone the node and re-add it
+    const newSelect = vehicleFilterSelect.cloneNode(true);
+    vehicleFilterSelect.parentNode.replaceChild(newSelect, vehicleFilterSelect);
 
-        if (logsToShow.length < 2 && selectedVehicleId !== 'all') {
-            alert("Not enough data for this vehicle to generate analytics. Please add at least two fill-up logs with odometer readings for it.");
-        }
-
-        // Sort logs by date and then odometer to ensure correct order for calculations
-        logsToShow.sort((a, b) => {
-            const dateA = new Date(a.date);
-            const dateB = new Date(b.date);
-            if (dateA - dateB !== 0) return dateA - dateB;
-            return a.odometer - b.odometer;
-        });
-
-        // Pass the full, sorted list of logs to the main analytics function
-        const analyticsData = calculateAnalytics(logsToShow);
-
-        // For the cost chart, we still want to filter out odo-only logs so they don't show up as 0 cost
-        const logsForCostChart = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
-
-        displayKeyMetrics(analyticsData);
-        displayAnalyticsCharts(logsForCostChart, analyticsData); // Pass filtered logs to charts
-        displayRecentLogs(logsToShow); // Show all logs in the "Recent Logs" list
+    newSelect.onchange = (e) => {
+        updateAnalyticsView(e.target.value);
     };
 
     // Initial view
-    updateAnalyticsView('all');
-
-    // Add event listener for changes
-    vehicleFilterSelect.onchange = (e) => {
-        updateAnalyticsView(e.target.value);
-    };
+    await updateAnalyticsView('all');
 
     openModalWithAnimation(document.getElementById('analyticsModal'));
 }
@@ -960,55 +988,74 @@ function calculateAnalytics(logs) {
 
     if (logs.length === 0) return metrics;
 
-    // Calculate total spend and amount from logs that are not odometer-only
+    let totalSpendForAvg = 0;
+    let totalAmountForAvg = 0;
+
     logs.forEach(log => {
+        // Calculate total spend and amount from logs that are not odometer-only
         const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
         if (!isOdometerOnly) {
             metrics.totalSpend += log.totalCost;
             metrics.totalAmount += log.amount;
         }
+
+        // For average price, only use logs with a valid price.
+        if (log.price > 0) {
+            totalSpendForAvg += log.totalCost;
+            totalAmountForAvg += log.amount;
+        }
     });
 
-    if (metrics.totalAmount > 0) {
-        metrics.avgPrice = metrics.totalSpend / metrics.totalAmount;
+    if (totalAmountForAvg > 0) {
+        metrics.avgPrice = totalSpendForAvg / totalAmountForAvg;
     }
 
-    // Then, calculate distance and efficiency using ALL logs, as they are sorted by date and odometer
-    const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
+    // --- Distance and Efficiency Calculation ---
+    const logsByVehicle = new Map();
+    logs.forEach(log => {
+        if (!log.vehicleId) return; // Skip logs without a vehicle ID
+        if (!logsByVehicle.has(log.vehicleId)) {
+            logsByVehicle.set(log.vehicleId, []);
+        }
+        logsByVehicle.get(log.vehicleId).push(log);
+    });
 
-    if (firstValidLogIndex !== -1) {
-        let lastOdometer = logs[firstValidLogIndex].odometer;
+    logsByVehicle.forEach(vehicleLogs => {
+        // vehicleLogs are already sorted by date from the initial sort in loadAnalytics
+        const firstValidLogIndex = vehicleLogs.findIndex(log => log.odometer > 0);
 
-        for (let i = firstValidLogIndex + 1; i < logs.length; i++) {
-            const currentLog = logs[i];
+        if (firstValidLogIndex !== -1) {
+            let lastOdometer = vehicleLogs[firstValidLogIndex].odometer;
 
-            if (currentLog.odometer > 0 && currentLog.odometer > lastOdometer) {
-                const distance = currentLog.odometer - lastOdometer;
-                metrics.totalDistance += distance;
+            for (let i = firstValidLogIndex + 1; i < vehicleLogs.length; i++) {
+                const currentLog = vehicleLogs[i];
 
-                // Efficiency is based on the amount of the last fill-up.
-                // We search backwards from the previous log to find the last time fuel was added.
-                let fuelUsed = 0;
-                for (let j = i - 1; j >= 0; j--) {
-                    const prevLog = logs[j];
-                    if (prevLog.amount > 0) {
-                        fuelUsed = prevLog.amount;
-                        break; // Found the last fill-up, stop searching.
+                if (currentLog.odometer > 0 && currentLog.odometer > lastOdometer) {
+                    const distance = currentLog.odometer - lastOdometer;
+                    metrics.totalDistance += distance;
+
+                    let fuelUsed = 0;
+                    for (let j = i - 1; j >= 0; j--) {
+                        const prevLog = vehicleLogs[j];
+                        if (prevLog.amount > 0) {
+                            fuelUsed = prevLog.amount;
+                            break;
+                        }
+                    }
+
+                    if (fuelUsed > 0 && distance > 0) {
+                        const efficiency = (fuelUsed / distance) * 100;
+                        metrics.efficiencyReadings.push(efficiency);
+                        metrics.efficiencyDates.push(currentLog.date);
                     }
                 }
 
-                if (fuelUsed > 0 && distance > 0) {
-                    const efficiency = (fuelUsed / distance) * 100; // L/100km
-                    metrics.efficiencyReadings.push(efficiency);
-                    metrics.efficiencyDates.push(currentLog.date);
+                if (currentLog.odometer > 0) {
+                    lastOdometer = currentLog.odometer;
                 }
             }
-            // Update lastOdometer if the current log has a valid reading
-            if (currentLog.odometer > 0) {
-                lastOdometer = currentLog.odometer;
-            }
         }
-    }
+    });
 
     if (metrics.efficiencyReadings.length > 0) {
         const sum = metrics.efficiencyReadings.reduce((a, b) => a + b, 0);
