@@ -1008,18 +1008,15 @@ function calculateAnalytics(logs) {
                 // Efficiency is based on the amount of the last fill-up.
                 // We search backwards from the previous log to find the last time fuel was added.
                 let fuelUsed = 0;
-                let previousLogWithFuel = null;
                 for (let j = i - 1; j >= 0; j--) {
                     const prevLog = logs[j];
                     if (prevLog.amount > 0) {
                         fuelUsed = prevLog.amount;
-                        previousLogWithFuel = prevLog;
                         break; // Found the last fill-up, stop searching.
                     }
                 }
 
-                // Only include efficiency if both the current and previous fill-up have valid prices.
-                if (fuelUsed > 0 && distance > 0 && currentLog.price > 0 && previousLogWithFuel && previousLogWithFuel.price > 0) {
+                if (fuelUsed > 0 && distance > 0) {
                     const efficiency = (fuelUsed / distance) * 100; // L/100km
                     metrics.efficiencyReadings.push(efficiency);
                     metrics.efficiencyDates.push(currentLog.date);
