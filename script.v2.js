@@ -1010,42 +1010,52 @@ function calculateAnalytics(logs) {
         metrics.avgPrice = totalSpendForAvg / totalAmountForAvg;
     }
 
-    // Calculate distance and efficiency using all logs sorted by date and odometer.
-    const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
+    // --- Distance and Efficiency Calculation ---
+    const logsByVehicle = new Map();
+    logs.forEach(log => {
+        if (!log.vehicleId) return; // Skip logs without a vehicle ID
+        if (!logsByVehicle.has(log.vehicleId)) {
+            logsByVehicle.set(log.vehicleId, []);
+        }
+        logsByVehicle.get(log.vehicleId).push(log);
+    });
 
-    if (firstValidLogIndex !== -1) {
-        let lastOdometer = logs[firstValidLogIndex].odometer;
+    logsByVehicle.forEach(vehicleLogs => {
+        // vehicleLogs are already sorted by date from the initial sort in loadAnalytics
+        const firstValidLogIndex = vehicleLogs.findIndex(log => log.odometer > 0);
 
-        for (let i = firstValidLogIndex + 1; i < logs.length; i++) {
-            const currentLog = logs[i];
+        if (firstValidLogIndex !== -1) {
+            let lastOdometer = vehicleLogs[firstValidLogIndex].odometer;
 
-            if (currentLog.odometer > 0 && currentLog.odometer > lastOdometer) {
-                const distance = currentLog.odometer - lastOdometer;
-                metrics.totalDistance += distance;
+            for (let i = firstValidLogIndex + 1; i < vehicleLogs.length; i++) {
+                const currentLog = vehicleLogs[i];
 
-                // Efficiency is based on the amount of the last fill-up.
-                // We search backwards from the previous log to find the last time fuel was added.
-                let fuelUsed = 0;
-                for (let j = i - 1; j >= 0; j--) {
-                    const prevLog = logs[j];
-                    if (prevLog.amount > 0) {
-                        fuelUsed = prevLog.amount;
-                        break; // Found the last fill-up, stop searching.
+                if (currentLog.odometer > 0 && currentLog.odometer > lastOdometer) {
+                    const distance = currentLog.odometer - lastOdometer;
+                    metrics.totalDistance += distance;
+
+                    let fuelUsed = 0;
+                    for (let j = i - 1; j >= 0; j--) {
+                        const prevLog = vehicleLogs[j];
+                        if (prevLog.amount > 0) {
+                            fuelUsed = prevLog.amount;
+                            break;
+                        }
+                    }
+
+                    if (fuelUsed > 0 && distance > 0) {
+                        const efficiency = (fuelUsed / distance) * 100;
+                        metrics.efficiencyReadings.push(efficiency);
+                        metrics.efficiencyDates.push(currentLog.date);
                     }
                 }
 
-                if (fuelUsed > 0 && distance > 0) {
-                    const efficiency = (fuelUsed / distance) * 100; // L/100km
-                    metrics.efficiencyReadings.push(efficiency);
-                    metrics.efficiencyDates.push(currentLog.date);
+                if (currentLog.odometer > 0) {
+                    lastOdometer = currentLog.odometer;
                 }
             }
-            // Update lastOdometer if the current log has a valid reading.
-            if (currentLog.odometer > 0) {
-                lastOdometer = currentLog.odometer;
-            }
         }
-    }
+    });
 
     if (metrics.efficiencyReadings.length > 0) {
         const sum = metrics.efficiencyReadings.reduce((a, b) => a + b, 0);
