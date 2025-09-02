@@ -840,48 +840,57 @@ function importData(event) {
         try {
             const data = JSON.parse(e.target.result);
 
-            if (typeof data !== 'object' || data === null || !data.fuel_logs) {
-                 throw new Error("Invalid data format. Expecting a JSON file with a 'fuel_logs' property.");
+            if (typeof data !== 'object' || data === null || (!data.fuel_logs && !data.vehicles)) {
+                 throw new Error("Invalid data format. Expecting a JSON file with a 'fuel_logs' or 'vehicles' property.");
             }
 
-            const confirmed = confirm(`Are you sure you want to import data from "${filename}"? This will overwrite ALL existing log data and fuel types.`);
+            const confirmed = confirm(`Are you sure you want to import data from "${filename}"? This will overwrite ALL existing data (logs, vehicles, and fuel types).`);
             if (confirmed) {
+                // Open a transaction for all stores that will be modified
+                const transaction = db.transaction(['fuel_logs', 'vehicles'], "readwrite");
+                const fuelLogsStore = transaction.objectStore('fuel_logs');
+                const vehiclesStore = transaction.objectStore('vehicles');
+
+                // Clear existing data
+                fuelLogsStore.clear();
+                vehiclesStore.clear();
+
                 // Import fuel types
                 if (data.fuel_types && Array.isArray(data.fuel_types)) {
                     localStorage.setItem('fuelTypes', JSON.stringify(data.fuel_types));
                 }
 
-                // Clear and import fuel logs
-                const transaction = db.transaction(['fuel_logs'], "readwrite");
-                const store = transaction.objectStore('fuel_logs');
-                const clearRequest = store.clear();
-
-                clearRequest.onsuccess = () => {
-                    console.log("Old fuel logs cleared. Starting import...");
-                    let importCount = 0;
+                // Import fuel logs
+                let logImportCount = 0;
+                if (data.fuel_logs && Array.isArray(data.fuel_logs)) {
                     data.fuel_logs.forEach(log => {
-                        // The `put` method will respect the `id` from the import file if it exists
-                        if(log.id) delete log.id; // Let the DB auto-increment the ID to avoid conflicts
-                        store.add(log);
-                        importCount++;
+                        if(log.id) delete log.id;
+                        fuelLogsStore.add(log);
+                        logImportCount++;
                     });
-
-                    transaction.oncomplete = () => {
-                        const message = `Successfully imported ${importCount} log(s) and fuel types from "${filename}". The page will now reload.`;
-                        console.log(message);
-                        alert(message);
-                        window.location.reload();
-                    };
-
-                    transaction.onerror = (event) => {
-                        console.error("Error during data import:", event.target.error);
-                        alert("An error occurred during import. Data may be partially imported.");
-                    };
-                };
-                clearRequest.onerror = (event) => {
-                     console.error("Error clearing object store:", event.target.error);
-                     alert("Error clearing old data. Import aborted.");
                 }
+
+                // Import vehicles
+                let vehicleImportCount = 0;
+                if (data.vehicles && Array.isArray(data.vehicles)) {
+                    data.vehicles.forEach(vehicle => {
+                        if(vehicle.id) delete vehicle.id;
+                        vehiclesStore.add(vehicle);
+                        vehicleImportCount++;
+                    });
+                }
+
+                transaction.oncomplete = () => {
+                    const message = `Successfully imported ${logImportCount} log(s), ${vehicleImportCount} vehicle(s), and fuel types from "${filename}". The page will now reload.`;
+                    console.log(message);
+                    alert(message);
+                    window.location.reload();
+                };
+
+                transaction.onerror = (event) => {
+                    console.error("Error during data import:", event.target.error);
+                    alert("An error occurred during import. Data may be partially imported.");
+                };
             }
         } catch (error) {
             console.error("Error parsing or processing import file:", error);
