@@ -846,39 +846,17 @@ function importData(event) {
 
             const confirmed = confirm(`Are you sure you want to import data from "${filename}"? This will overwrite ALL existing data (logs, vehicles, and fuel types).`);
             if (confirmed) {
-                // Open a transaction for all stores that will be modified
-                const transaction = db.transaction(['fuel_logs', 'vehicles'], "readwrite");
+                const transaction = db.transaction(['fuel_logs', 'vehicles'], 'readwrite');
                 const fuelLogsStore = transaction.objectStore('fuel_logs');
                 const vehiclesStore = transaction.objectStore('vehicles');
 
-                // Clear existing data
-                fuelLogsStore.clear();
-                vehiclesStore.clear();
-
-                // Import fuel types
-                if (data.fuel_types && Array.isArray(data.fuel_types)) {
-                    localStorage.setItem('fuelTypes', JSON.stringify(data.fuel_types));
-                }
-
-                // Import fuel logs
                 let logImportCount = 0;
-                if (data.fuel_logs && Array.isArray(data.fuel_logs)) {
-                    data.fuel_logs.forEach(log => {
-                        if(log.id) delete log.id;
-                        fuelLogsStore.add(log);
-                        logImportCount++;
-                    });
-                }
-
-                // Import vehicles
                 let vehicleImportCount = 0;
-                if (data.vehicles && Array.isArray(data.vehicles)) {
-                    data.vehicles.forEach(vehicle => {
-                        if(vehicle.id) delete vehicle.id;
-                        vehiclesStore.add(vehicle);
-                        vehicleImportCount++;
-                    });
-                }
+
+                transaction.onerror = (event) => {
+                    console.error("Error during data import transaction:", event.target.error);
+                    alert("An error occurred during import. The database transaction failed.");
+                };
 
                 transaction.oncomplete = () => {
                     const message = `Successfully imported ${logImportCount} log(s), ${vehicleImportCount} vehicle(s), and fuel types from "${filename}". The page will now reload.`;
@@ -887,16 +865,39 @@ function importData(event) {
                     window.location.reload();
                 };
 
-                transaction.onerror = (event) => {
-                    console.error("Error during data import:", event.target.error);
-                    alert("An error occurred during import. Data may be partially imported.");
+                const clearLogsRequest = fuelLogsStore.clear();
+                clearLogsRequest.onsuccess = () => {
+                    console.log('Old logs cleared.');
+                    const clearVehiclesRequest = vehiclesStore.clear();
+                    clearVehiclesRequest.onsuccess = () => {
+                        console.log('Old vehicles cleared.');
+
+                        if (data.fuel_types && Array.isArray(data.fuel_types)) {
+                            localStorage.setItem('fuelTypes', JSON.stringify(data.fuel_types));
+                        }
+
+                        if (data.fuel_logs && Array.isArray(data.fuel_logs)) {
+                            data.fuel_logs.forEach(log => {
+                                if (log.id) delete log.id;
+                                fuelLogsStore.add(log);
+                                logImportCount++;
+                            });
+                        }
+
+                        if (data.vehicles && Array.isArray(data.vehicles)) {
+                            data.vehicles.forEach(vehicle => {
+                                if (vehicle.id) delete vehicle.id;
+                                vehiclesStore.add(vehicle);
+                                vehicleImportCount++;
+                            });
+                        }
+                    };
                 };
             }
         } catch (error) {
             console.error("Error parsing or processing import file:", error);
             alert(`Could not import data from "${filename}". Error: ${error.message}`);
         } finally {
-            // Reset file input so the same file can be selected again
             event.target.value = '';
         }
     };
