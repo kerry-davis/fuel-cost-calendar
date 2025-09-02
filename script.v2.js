@@ -973,20 +973,19 @@ function calculateAnalytics(logs) {
     let totalAmountForAvg = 0;
 
     logs.forEach(log => {
-        // Total Spend Calculation: include any log with a total cost.
+        // Calculate total spend and amount from logs that are not odometer-only
         const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
         if (!isOdometerOnly) {
             metrics.totalSpend += log.totalCost;
+            metrics.totalAmount += log.amount;
         }
 
-        // Avg Price and Total Amount Calculation: only include logs with a valid price.
+        // For average price, only use logs with a valid price.
         if (log.price > 0) {
             totalSpendForAvg += log.totalCost;
             totalAmountForAvg += log.amount;
         }
     });
-
-    metrics.totalAmount = totalAmountForAvg;
 
     if (totalAmountForAvg > 0) {
         metrics.avgPrice = totalSpendForAvg / totalAmountForAvg;
