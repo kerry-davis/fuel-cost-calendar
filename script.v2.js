@@ -969,17 +969,27 @@ function calculateAnalytics(logs) {
 
     if (logs.length === 0) return metrics;
 
-    // Create a filtered array for logs that have a valid price per liter.
-    const logsWithPrice = logs.filter(log => log.price > 0);
+    let totalSpendForAvg = 0;
+    let totalAmountForAvg = 0;
 
-    // Calculate total spend and amount from logs with a valid price.
-    logsWithPrice.forEach(log => {
-        metrics.totalSpend += log.totalCost;
-        metrics.totalAmount += log.amount;
+    logs.forEach(log => {
+        // Total Spend Calculation: include any log with a total cost.
+        const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
+        if (!isOdometerOnly) {
+            metrics.totalSpend += log.totalCost;
+        }
+
+        // Avg Price and Total Amount Calculation: only include logs with a valid price.
+        if (log.price > 0) {
+            totalSpendForAvg += log.totalCost;
+            totalAmountForAvg += log.amount;
+        }
     });
 
-    if (metrics.totalAmount > 0) {
-        metrics.avgPrice = metrics.totalSpend / metrics.totalAmount;
+    metrics.totalAmount = totalAmountForAvg;
+
+    if (totalAmountForAvg > 0) {
+        metrics.avgPrice = totalSpendForAvg / totalAmountForAvg;
     }
 
     // Calculate distance and efficiency using all logs sorted by date and odometer.
