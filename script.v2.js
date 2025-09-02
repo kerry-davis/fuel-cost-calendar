@@ -790,13 +790,22 @@ async function exportData(format = 'json') {
     let dataStr;
     let filename;
 
+    // Generate timestamp
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const timestamp = `${year}_${month}-${day}_${hours}${minutes}`;
+
     if (format === 'json') {
         const exportObject = {
             fuel_logs: logs,
             fuel_types: JSON.parse(localStorage.getItem('fuelTypes') || '[]')
         };
         dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2));
-        filename = "fuel_log_export.json";
+        filename = `fuel_log_export_${timestamp}.json`;
     } else { // csv
         const header = "id,date,fuelType,price,totalCost,amount,odometer,notes\n";
         const rows = logs.map(log => {
@@ -805,7 +814,7 @@ async function exportData(format = 'json') {
         }).join("\n");
         const csvContent = header + rows;
         dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
-        filename = "fuel_log_export.csv";
+        filename = `fuel_log_export_${timestamp}.csv`;
     }
 
     const downloadAnchorNode = document.createElement('a');
@@ -960,20 +969,20 @@ function calculateAnalytics(logs) {
 
     if (logs.length === 0) return metrics;
 
-    // Calculate total spend and amount from logs that are not odometer-only
-    logs.forEach(log => {
-        const isOdometerOnly = log.odometer > 0 && !log.totalCost && !log.price && !log.amount;
-        if (!isOdometerOnly) {
-            metrics.totalSpend += log.totalCost;
-            metrics.totalAmount += log.amount;
-        }
+    // Create a filtered array for logs that have a valid price per liter.
+    const logsWithPrice = logs.filter(log => log.price > 0);
+
+    // Calculate total spend and amount from logs with a valid price.
+    logsWithPrice.forEach(log => {
+        metrics.totalSpend += log.totalCost;
+        metrics.totalAmount += log.amount;
     });
 
     if (metrics.totalAmount > 0) {
         metrics.avgPrice = metrics.totalSpend / metrics.totalAmount;
     }
 
-    // Then, calculate distance and efficiency using ALL logs, as they are sorted by date and odometer
+    // Calculate distance and efficiency using all logs sorted by date and odometer.
     const firstValidLogIndex = logs.findIndex(log => log.odometer > 0);
 
     if (firstValidLogIndex !== -1) {
@@ -989,21 +998,24 @@ function calculateAnalytics(logs) {
                 // Efficiency is based on the amount of the last fill-up.
                 // We search backwards from the previous log to find the last time fuel was added.
                 let fuelUsed = 0;
+                let previousLogWithFuel = null;
                 for (let j = i - 1; j >= 0; j--) {
                     const prevLog = logs[j];
                     if (prevLog.amount > 0) {
                         fuelUsed = prevLog.amount;
+                        previousLogWithFuel = prevLog;
                         break; // Found the last fill-up, stop searching.
                     }
                 }
 
-                if (fuelUsed > 0 && distance > 0) {
+                // Only include efficiency if both the current and previous fill-up have valid prices.
+                if (fuelUsed > 0 && distance > 0 && currentLog.price > 0 && previousLogWithFuel && previousLogWithFuel.price > 0) {
                     const efficiency = (fuelUsed / distance) * 100; // L/100km
                     metrics.efficiencyReadings.push(efficiency);
                     metrics.efficiencyDates.push(currentLog.date);
                 }
             }
-            // Update lastOdometer if the current log has a valid reading
+            // Update lastOdometer if the current log has a valid reading.
             if (currentLog.odometer > 0) {
                 lastOdometer = currentLog.odometer;
             }
