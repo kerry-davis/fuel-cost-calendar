@@ -6,9 +6,9 @@ A Progressive Web App (PWA) designed to help users track and visualize fuel pric
 
 - **Monthly Calendar View**: Displays fuel prices for each day of the month, allowing users to identify trends and plan refueling accordingly.
 
-- **Responsive Design**: Optimized for both desktop and mobile devices, ensuring accessibility on various screen sizes.
+- **Responsive Design**: Optimised for both desktop and mobile devices, ensuring accessibility on various screen sizes.
 
-- **Offline Support**: Utilizes service workers to provide offline functionality, ensuring users can access fuel price data without an internet connection.
+- **Offline Support**: Utilises service workers to provide offline functionality, ensuring users can access fuel price data without an internet connection.
 
 - **Data Persistence**: Stores fuel price data locally, reducing the need for constant data fetching and improving performance.
 
