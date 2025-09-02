@@ -922,21 +922,25 @@ async function loadAnalytics() {
         return;
     }
 
-    // Populate vehicle filter dropdown
     const vehicleFilterSelect = document.getElementById('analytics-vehicle-filter');
-    vehicleFilterSelect.innerHTML = '<option value="all">All Vehicles</option>';
-    allVehicles.forEach(v => {
-        vehicleFilterSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
-    });
 
+    // Function to update the view
     const updateAnalyticsView = (selectedVehicleId) => {
-        let logsToShow = allLogs;
+        // Create a copy of the logs to avoid modifying the original array
+        let logsToShow = [...allLogs];
+
         if (selectedVehicleId !== 'all') {
-            logsToShow = allLogs.filter(log => String(log.vehicleId) === selectedVehicleId);
+            logsToShow = logsToShow.filter(log => String(log.vehicleId) === selectedVehicleId);
         }
 
+        if (logsToShow.length === 0 && selectedVehicleId !== 'all') {
+            // Clear the analytics display or show a message
+            displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
+            destroyActiveCharts(); // Clear charts
+            document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs found for this vehicle.</p>';
+            return; // Stop further processing
+        }
 
-        // Sort logs by date and then odometer to ensure correct order for calculations
         logsToShow.sort((a, b) => {
             const dateA = new Date(a.date);
             const dateB = new Date(b.date);
@@ -944,24 +948,26 @@ async function loadAnalytics() {
             return a.odometer - b.odometer;
         });
 
-        // Pass the full, sorted list of logs to the main analytics function
         const analyticsData = calculateAnalytics(logsToShow);
-
-        // For the cost chart, we still want to filter out odo-only logs so they don't show up as 0 cost
         const logsForCostChart = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
 
         displayKeyMetrics(analyticsData);
-        displayAnalyticsCharts(logsForCostChart, analyticsData); // Pass filtered logs to charts
-        displayRecentLogs(logsToShow); // Show all logs in the "Recent Logs" list
+        displayAnalyticsCharts(logsForCostChart, analyticsData);
+        displayRecentLogs(logsToShow);
+    };
+
+    // Populate dropdown and set up listener
+    vehicleFilterSelect.innerHTML = '<option value="all">All Vehicles</option>';
+    allVehicles.forEach(v => {
+        vehicleFilterSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+    });
+
+    vehicleFilterSelect.onchange = (e) => {
+        updateAnalyticsView(e.target.value);
     };
 
     // Initial view
     updateAnalyticsView('all');
-
-    // Add event listener for changes
-    vehicleFilterSelect.onchange = (e) => {
-        updateAnalyticsView(e.target.value);
-    };
 
     openModalWithAnimation(document.getElementById('analyticsModal'));
 }
