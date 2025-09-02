@@ -914,31 +914,39 @@ function destroyActiveCharts() {
 }
 
 async function loadAnalytics() {
-    const allLogs = await getAllData('fuel_logs');
+    // Fetch all vehicles once to populate the dropdown
     const allVehicles = await getAllData('vehicles');
-
-    if (allLogs.length < 1) {
-        alert("No logs available to generate analytics.");
-        return;
-    }
-
     const vehicleFilterSelect = document.getElementById('analytics-vehicle-filter');
 
-    // Function to update the view
-    const updateAnalyticsView = (selectedVehicleId) => {
-        // Create a copy of the logs to avoid modifying the original array
-        let logsToShow = [...allLogs];
+    // Populate dropdown
+    vehicleFilterSelect.innerHTML = '<option value="all">All Vehicles</option>';
+    allVehicles.forEach(v => {
+        vehicleFilterSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
+    });
 
+    // The update function will now be async and fetch its own data
+    const updateAnalyticsView = async (selectedVehicleId) => {
+        const allLogs = await getAllData('fuel_logs');
+
+        if (allLogs.length < 1 && selectedVehicleId === 'all') {
+            alert("No logs available to generate analytics.");
+            // Clear the analytics display or show a message
+            displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
+            destroyActiveCharts(); // Clear charts
+            document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs to analyze.</p>';
+            return;
+        }
+
+        let logsToShow = allLogs;
         if (selectedVehicleId !== 'all') {
             logsToShow = logsToShow.filter(log => String(log.vehicleId) === selectedVehicleId);
         }
 
         if (logsToShow.length === 0 && selectedVehicleId !== 'all') {
-            // Clear the analytics display or show a message
             displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
-            destroyActiveCharts(); // Clear charts
+            destroyActiveCharts();
             document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs found for this vehicle.</p>';
-            return; // Stop further processing
+            return;
         }
 
         logsToShow.sort((a, b) => {
@@ -956,18 +964,16 @@ async function loadAnalytics() {
         displayRecentLogs(logsToShow);
     };
 
-    // Populate dropdown and set up listener
-    vehicleFilterSelect.innerHTML = '<option value="all">All Vehicles</option>';
-    allVehicles.forEach(v => {
-        vehicleFilterSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
-    });
+    // To prevent multiple listeners, we can clone the node or just reset the onchange
+    const newSelect = vehicleFilterSelect.cloneNode(true);
+    vehicleFilterSelect.parentNode.replaceChild(newSelect, vehicleFilterSelect);
 
-    vehicleFilterSelect.onchange = (e) => {
+    newSelect.onchange = (e) => {
         updateAnalyticsView(e.target.value);
     };
 
     // Initial view
-    updateAnalyticsView('all');
+    await updateAnalyticsView('all');
 
     openModalWithAnimation(document.getElementById('analyticsModal'));
 }
