@@ -913,8 +913,45 @@ function destroyActiveCharts() {
     activeCharts = {};
 }
 
+async function updateAnalyticsView(selectedVehicleId) {
+    const allLogs = await getAllData('fuel_logs');
+
+    if (allLogs.length < 1 && selectedVehicleId === 'all') {
+        alert("No logs available to generate analytics.");
+        displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
+        destroyActiveCharts();
+        document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs to analyze.</p>';
+        return;
+    }
+
+    let logsToShow = allLogs;
+    if (selectedVehicleId !== 'all') {
+        logsToShow = logsToShow.filter(log => String(log.vehicleId) === selectedVehicleId);
+    }
+
+    if (logsToShow.length === 0 && selectedVehicleId !== 'all') {
+        displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
+        destroyActiveCharts();
+        document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs found for this vehicle.</p>';
+        return;
+    }
+
+    logsToShow.sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (dateA - dateB !== 0) return dateA - dateB;
+        return a.odometer - b.odometer;
+    });
+
+    const analyticsData = calculateAnalytics(logsToShow);
+    const logsForCostChart = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
+
+    displayKeyMetrics(analyticsData);
+    displayAnalyticsCharts(logsForCostChart, analyticsData);
+    displayRecentLogs(logsToShow);
+}
+
 async function loadAnalytics() {
-    // Fetch all vehicles once to populate the dropdown
     const allVehicles = await getAllData('vehicles');
     const vehicleFilterSelect = document.getElementById('analytics-vehicle-filter');
 
@@ -924,47 +961,7 @@ async function loadAnalytics() {
         vehicleFilterSelect.innerHTML += `<option value="${v.id}">${v.name}</option>`;
     });
 
-    // The update function will now be async and fetch its own data
-    const updateAnalyticsView = async (selectedVehicleId) => {
-        const allLogs = await getAllData('fuel_logs');
-
-        if (allLogs.length < 1 && selectedVehicleId === 'all') {
-            alert("No logs available to generate analytics.");
-            // Clear the analytics display or show a message
-            displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
-            destroyActiveCharts(); // Clear charts
-            document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs to analyze.</p>';
-            return;
-        }
-
-        let logsToShow = allLogs;
-        if (selectedVehicleId !== 'all') {
-            logsToShow = logsToShow.filter(log => String(log.vehicleId) === selectedVehicleId);
-        }
-
-        if (logsToShow.length === 0 && selectedVehicleId !== 'all') {
-            displayKeyMetrics({ totalSpend: 0, avgPrice: 0, avgEfficiency: 0, totalDistance: 0 });
-            destroyActiveCharts();
-            document.getElementById('recent-logs-container').innerHTML = '<p class="text-center text-gray-500">No logs found for this vehicle.</p>';
-            return;
-        }
-
-        logsToShow.sort((a, b) => {
-            const dateA = new Date(a.date);
-            const dateB = new Date(b.date);
-            if (dateA - dateB !== 0) return dateA - dateB;
-            return a.odometer - b.odometer;
-        });
-
-        const analyticsData = calculateAnalytics(logsToShow);
-        const logsForCostChart = logsToShow.filter(log => !(!log.totalCost && !log.price && !log.amount && log.odometer > 0));
-
-        displayKeyMetrics(analyticsData);
-        displayAnalyticsCharts(logsForCostChart, analyticsData);
-        displayRecentLogs(logsToShow);
-    };
-
-    // To prevent multiple listeners, we can clone the node or just reset the onchange
+    // To prevent multiple listeners, we clone the node and re-add it
     const newSelect = vehicleFilterSelect.cloneNode(true);
     vehicleFilterSelect.parentNode.replaceChild(newSelect, vehicleFilterSelect);
 
