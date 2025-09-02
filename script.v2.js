@@ -782,7 +782,9 @@ function getAllData(storeName) {
 
 async function exportData(format = 'json') {
     const logs = await getAllData('fuel_logs');
-    if (logs.length === 0) {
+    const vehicles = await getAllData('vehicles');
+
+    if (logs.length === 0 && vehicles.length === 0) {
         alert("No data to export.");
         return;
     }
@@ -802,6 +804,7 @@ async function exportData(format = 'json') {
     if (format === 'json') {
         const exportObject = {
             fuel_logs: logs,
+            vehicles: vehicles,
             fuel_types: JSON.parse(localStorage.getItem('fuelTypes') || '[]')
         };
         dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2));
