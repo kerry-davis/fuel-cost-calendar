@@ -6,8 +6,8 @@ Fuel Cost Calendar is a Progressive Web Application (PWA) designed to help you e
 
 - **Interactive Calendar**: Log your fuel fill-ups on a simple and intuitive calendar. Use the navigation arrows to switch between months.
 - **Multi-Vehicle Support**: Manage and track expenses for multiple vehicles.
-- **Customizable Fuel Types**: Add, edit, or remove fuel types to match your needs.
-- **Detailed Analytics**: Visualize your spending and fuel efficiency over time with charts and key metrics.
+- **Customisable Fuel Types**: Add, edit, or remove fuel types to match your needs.
+- **Detailed Analytics**: Visualise your spending and fuel efficiency over time with charts and key metrics.
 - **Data Management**: Export your data to JSON or CSV for backups or external analysis. Import your data from a JSON file.
 - **PWA Ready**: Install the app on your device for a native-like experience and offline access.
 - **Dark Mode**: Switch between light and dark themes for comfortable viewing.
@@ -31,11 +31,11 @@ Fuel Cost Calendar is a Progressive Web Application (PWA) designed to help you e
 - **HTML5**
 - **CSS3** with **Tailwind CSS**
 - **Vanilla JavaScript (ES6+)**
-- **Chart.js** for data visualization
+- **Chart.js** for data visualisation
 - **IndexedDB** for client-side storage
 - **Font Awesome** for icons
 - **Service Workers** for offline functionality
 
-## License
+## Licence
 
-This project is licensed under the MIT License.
+This project is licenced under the MIT Licence.
