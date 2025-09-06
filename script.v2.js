@@ -1037,23 +1037,39 @@ function calculateAnalytics(logs) {
             }
         }
 
-        // --- New, more accurate efficiency calculation ---
-        // Filter for logs that are actual fill-ups (have fuel and odometer).
-        const fillUpLogs = vehicleLogs.filter(log => log.amount > 0 && log.odometer > 0);
+        // --- New, flexible efficiency calculation (Cumulative Method) ---
+        // Identify all logs with an odometer reading to use as "checkpoints".
+        const odometerCheckpoints = vehicleLogs.filter(log => log.odometer > 0);
 
-        // Need at least two fill-ups to calculate efficiency.
-        if (fillUpLogs.length >= 2) {
-            for (let i = 1; i < fillUpLogs.length; i++) {
-                const previousFill = fillUpLogs[i - 1];
-                const currentFill = fillUpLogs[i];
+        // We need at least two checkpoints to calculate a travel segment.
+        if (odometerCheckpoints.length >= 2) {
+            for (let i = 1; i < odometerCheckpoints.length; i++) {
+                const previousCheckpoint = odometerCheckpoints[i - 1];
+                const currentCheckpoint = odometerCheckpoints[i];
 
-                const distance = currentFill.odometer - previousFill.odometer;
-                const fuelUsed = previousFill.amount; // Use fuel from the *previous* fill-up.
+                // Find the original indices of these checkpoints in the main log array.
+                // This is crucial for correctly summing the fuel from all logs between them.
+                const startIndex = vehicleLogs.indexOf(previousCheckpoint);
+                const endIndex = vehicleLogs.indexOf(currentCheckpoint);
 
+                // Calculate the distance for this segment.
+                const distance = currentCheckpoint.odometer - previousCheckpoint.odometer;
+
+                // Sum all fuel amounts from the start checkpoint up to (but not including) the end checkpoint.
+                // This correctly includes the fuel from the first fill-up and any intermediate, odometer-less fill-ups.
+                let fuelUsed = 0;
+                if (startIndex !== -1 && endIndex !== -1) {
+                    for (let j = startIndex; j < endIndex; j++) {
+                        fuelUsed += vehicleLogs[j].amount;
+                    }
+                }
+
+                // If we have a valid distance and fuel amount, calculate and record the efficiency.
                 if (distance > 0 && fuelUsed > 0) {
                     const efficiency = (fuelUsed / distance) * 100; // L/100km
                     metrics.efficiencyReadings.push(efficiency);
-                    metrics.efficiencyDates.push(currentFill.date);
+                    // The efficiency reading is for the period ending on the date of the current checkpoint.
+                    metrics.efficiencyDates.push(currentCheckpoint.date);
                 }
             }
         }
