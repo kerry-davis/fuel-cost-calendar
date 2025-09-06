@@ -1013,7 +1013,7 @@ function calculateAnalytics(logs) {
     // --- Distance and Efficiency Calculation ---
     const logsByVehicle = new Map();
     logs.forEach(log => {
-        if (!log.vehicleId) return; // Skip logs without a vehicle ID
+        if (!log.vehicleId) return;
         if (!logsByVehicle.has(log.vehicleId)) {
             logsByVehicle.set(log.vehicleId, []);
         }
@@ -1021,37 +1021,55 @@ function calculateAnalytics(logs) {
     });
 
     logsByVehicle.forEach(vehicleLogs => {
-        // vehicleLogs are already sorted by date from the initial sort in loadAnalytics
-        const firstValidLogIndex = vehicleLogs.findIndex(log => log.odometer > 0);
-
-        if (firstValidLogIndex !== -1) {
-            let lastOdometer = vehicleLogs[firstValidLogIndex].odometer;
-
-            for (let i = firstValidLogIndex + 1; i < vehicleLogs.length; i++) {
+        // First, calculate total distance from all logs with an odometer.
+        // This part remains the same to credit all driven distances.
+        const firstOdoIndex = vehicleLogs.findIndex(log => log.odometer > 0);
+        if (firstOdoIndex !== -1) {
+            let lastOdometerForDistance = vehicleLogs[firstOdoIndex].odometer;
+            for (let i = firstOdoIndex + 1; i < vehicleLogs.length; i++) {
                 const currentLog = vehicleLogs[i];
+                if (currentLog.odometer > lastOdometerForDistance) {
+                    metrics.totalDistance += (currentLog.odometer - lastOdometerForDistance);
+                }
+                if (currentLog.odometer > 0) {
+                    lastOdometerForDistance = currentLog.odometer;
+                }
+            }
+        }
 
-                if (currentLog.odometer > 0 && currentLog.odometer > lastOdometer) {
-                    const distance = currentLog.odometer - lastOdometer;
-                    metrics.totalDistance += distance;
+        // --- New, flexible efficiency calculation (Cumulative Method) ---
+        // Identify all logs with an odometer reading to use as "checkpoints".
+        const odometerCheckpoints = vehicleLogs.filter(log => log.odometer > 0);
 
-                    let fuelUsed = 0;
-                    for (let j = i - 1; j >= 0; j--) {
-                        const prevLog = vehicleLogs[j];
-                        if (prevLog.amount > 0) {
-                            fuelUsed = prevLog.amount;
-                            break;
-                        }
-                    }
+        // We need at least two checkpoints to calculate a travel segment.
+        if (odometerCheckpoints.length >= 2) {
+            for (let i = 1; i < odometerCheckpoints.length; i++) {
+                const previousCheckpoint = odometerCheckpoints[i - 1];
+                const currentCheckpoint = odometerCheckpoints[i];
 
-                    if (fuelUsed > 0 && distance > 0) {
-                        const efficiency = (fuelUsed / distance) * 100;
-                        metrics.efficiencyReadings.push(efficiency);
-                        metrics.efficiencyDates.push(currentLog.date);
+                // Find the original indices of these checkpoints in the main log array.
+                // This is crucial for correctly summing the fuel from all logs between them.
+                const startIndex = vehicleLogs.indexOf(previousCheckpoint);
+                const endIndex = vehicleLogs.indexOf(currentCheckpoint);
+
+                // Calculate the distance for this segment.
+                const distance = currentCheckpoint.odometer - previousCheckpoint.odometer;
+
+                // Sum all fuel amounts from the start checkpoint up to (but not including) the end checkpoint.
+                // This correctly includes the fuel from the first fill-up and any intermediate, odometer-less fill-ups.
+                let fuelUsed = 0;
+                if (startIndex !== -1 && endIndex !== -1) {
+                    for (let j = startIndex; j < endIndex; j++) {
+                        fuelUsed += vehicleLogs[j].amount;
                     }
                 }
 
-                if (currentLog.odometer > 0) {
-                    lastOdometer = currentLog.odometer;
+                // If we have a valid distance and fuel amount, calculate and record the efficiency.
+                if (distance > 0 && fuelUsed > 0) {
+                    const efficiency = (fuelUsed / distance) * 100; // L/100km
+                    metrics.efficiencyReadings.push(efficiency);
+                    // The efficiency reading is for the period ending on the date of the current checkpoint.
+                    metrics.efficiencyDates.push(currentCheckpoint.date);
                 }
             }
         }
